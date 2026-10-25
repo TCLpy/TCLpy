@@ -1,72 +1,148 @@
-﻿# src/tcl_lexer.py
+# src/tcl_lexer.py
 import re
 
 def tokenize(source: str) -> list[tuple[str, str]]:
-    """Tokenize Tcl source code into a stream of typed tokens, supporting brackets and braces."""
+    """Tokenize Tcl source code into a list of (token_type, value) tuples, supporting hyphenated variable names."""
     tokens = []
     i = 0
     n = len(source)
     
     while i < n:
-        c = source[i]
+        char = source[i]
         
-        # Skip whitespace
-        if c in " \t\r":
+        # Skip whitespace (except newlines)
+        if char in ' \t\r':
             i += 1
             continue
             
-        # Newlines or semicolons act as statement separators
-        if c == "\n" or c == ";":
-            tokens.append(("NEWLINE", ";"))
+        # Handle newlines and semicolons as statement separators
+        if char == '\n' or char == ';':
+            tokens.append(("NEWLINE", "\n"))
             i += 1
             continue
             
-        # Bracket command substitution: [...]
-        if c == "[":
-            depth = 1
-            start = i
-            i += 1
-            while i < n and depth > 0:
-                if source[i] == "[":
-                    depth += 1
-                elif source[i] == "]":
-                    depth -= 1
+        # Handle comments
+        if char == '#':
+            while i < n and source[i] != '\n':
                 i += 1
-            tokens.append(("BRACKET", source[start:i]))
             continue
             
-        # Braced strings: {...}
-        if c == "{":
-            depth = 1
-            start = i
+        # Handle variable references ($var or $var(key) or $target-app)
+        if char == '$':
             i += 1
-            while i < n and depth > 0:
-                if source[i] == "{":
-                    depth += 1
-                elif source[i] == "}":
-                    depth -= 1
-                i += 1
-            tokens.append(("BRACED", source[start+1:i-1]))
-            continue
-            
-        # Variables: $var
-        if c == "$":
-            i += 1
-            match = re.match(r"[a-zA-Z_][a-zA-Z0-9_]*", source[i:])
+            match = re.match(r'^([a-zA-Z_][a-zA-Z0-9_-]*)(?:\(([a-zA-Z0-9_#-]+)\))?', source[i:])
             if match:
-                var_name = match.group(0)
-                tokens.append(("VAR", var_name))
-                i += len(var_name)
+                var_name = match.group(1)
+                key = match.group(2)
+                consumed = match.end()
+                i += consumed
+                if key:
+                    tokens.append(("VAR", f"{var_name}({key})"))
+                else:
+                    tokens.append(("VAR", var_name))
+                continue
+            else:
+                tokens.append(("WORD", "$"))
+                continue
+                
+        # Handle double-quoted strings
+        if char == '"':
+            i += 1
+            start = i
+            escaped = False
+            while i < n:
+                if escaped:
+                    escaped = False
+                    i += 1
+                    continue
+                if source[i] == '\\':
+                    escaped = True
+                    i += 1
+                    continue
+                if source[i] == '"':
+                    break
+                i += 1
+            val = source[start:i]
+            if i < n:
+                i += 1 # skip closing quote
+            tokens.append(("QUOTED", val))
             continue
             
-        # Standard words / identifiers / numbers / strings
-        match = re.match(r'[^\s\[\]\{\};\$]+', source[i:])
-        if match:
-            word = match.group(0)
-            tokens.append(("WORD", word))
-            i += len(word)
+        # Handle braced strings { ... }
+        if char == '{':
+            i += 1
+            start = i
+            depth = 1
+            escaped = False
+            while i < n:
+                if escaped:
+                    escaped = False
+                    i += 1
+                    continue
+                if source[i] == '\\':
+                    escaped = True
+                    i += 1
+                    continue
+                if source[i] == '{':
+                    depth += 1
+                elif source[i] == '}':
+                    depth -= 1
+                    if depth == 0:
+                        break
+                i += 1
+            val = source[start:i]
+            if i < n:
+                i += 1 # skip closing brace
+            tokens.append(("BRACED", val))
             continue
-            
-        i += 1
+
+        # Handle bracketed command substitution [ ... ]
+        if char == '[':
+            i += 1
+            start = i
+            depth = 1
+            escaped = False
+            while i < n:
+                if escaped:
+                    escaped = False
+                    i += 1
+                    continue
+                if source[i] == '\\':
+                    escaped = True
+                    i += 1
+                    continue
+                if source[i] == '[':
+                    depth += 1
+                elif source[i] == ']':
+                    depth -= 1
+                    if depth == 0:
+                        break
+                i += 1
+            val = source[start:i]
+            if i < n:
+                i += 1 # skip closing bracket
+            tokens.append(("BRACKET", "[" + val + "]"))
+            continue
+
+        # Handle regular words / commands / arguments
+        start = i
+        escaped = False
+        while i < n:
+            c = source[i]
+            if escaped:
+                escaped = False
+                i += 1
+                continue
+            if c == '\\':
+                escaped = True
+                i += 1
+                continue
+            if c in ' \t\r\n;\"{}[]$':
+                break
+            i += 1
         
+        word = source[start:i]
+        if word:
+            tokens.append(("WORD", word))
+            
     return tokens

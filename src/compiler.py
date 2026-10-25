@@ -1,269 +1,588 @@
-﻿# src/compiler.py
+import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+# src/compiler.py
 import ast
-from src.tcl_lexer import tokenize
+import re
 
-def parse_commands(tokens: list[tuple[str, str]]) -> list[list[tuple[str, str]]]:
-    """Group flat tokens into individual command statements separated by newlines."""
-    commands = []
-    current_cmd = []
-    
-    for t_type, t_val in tokens:
-        if t_type == "NEWLINE":
-            if current_cmd:
-                commands.append(current_cmd)
-                current_cmd = []
-            continue
-        current_cmd.append((t_type, t_val))
-        
-    if current_cmd:
-        commands.append(current_cmd)
-    return commands
+try:
+    from tcl_lexer import tokenize
+except ImportError:
+    from tcl_lexer import tokenize
 
-def parse_identifier(name: str) -> ast.expr:
-    """Parses dotted or double-colon names into nested Python ast.Attribute nodes."""
-    parts = name.replace("::", ".").split(".")
-    node = ast.Name(id=parts[0], ctx=ast.Load())
-    for part in parts[1:]:
-        node = ast.Attribute(value=node, attr=part, ctx=ast.Load())
-    return node
-
-def parse_constant(val: str):
-    """Automatically coerce numeric string tokens into int or float types."""
+def parse_tcl_literal(val: str):
+    """Attempt to parse a Tcl word literal as an int or float, fallback to string."""
     try:
-        if "." in val:
+        if "." in val or "e" in val.lower():
             return float(val)
         return int(val)
     except ValueError:
         return val
 
-def compile_word_to_node(t_type: str, t_val: str) -> ast.expr:
-    """Convert a Tcl token or bracket expression into a Python AST expression node."""
-    if t_type == "VAR":
-        return ast.Name(id=t_val, ctx=ast.Load())
-    elif t_type == "BRACKET":
-        inner_source = t_val[1:-1].strip()
-        inner_tokens = tokenize(inner_source)
-        inner_tree = tokens_to_ast(inner_tokens)
-        if inner_tree.body and isinstance(inner_tree.body[-1], ast.Expr):
-            return inner_tree.body[-1].value
-        return ast.Constant(value=None)
-    elif t_type in ("BRACED", "STRING", "WORD"):
-        parsed_val = parse_constant(t_val)
-        return ast.Constant(value=parsed_val)
-    return ast.Constant(value=t_val)
-
-def compile_tcl_expr(expr_str: str) -> ast.expr:
-    """Compile a Tcl expression or condition containing $vars and [...] brackets into a Python AST expr."""
-    tokens = tokenize(expr_str)
-    py_parts = []
-    for t_type, t_val in tokens:
-        if t_type == "BRACKET":
-            inner_tcl = t_val[1:-1].strip()
-            inner_tokens = tokenize(inner_tcl)
-            inner_tree = tokens_to_ast(inner_tokens)
-            if inner_tree.body and isinstance(inner_tree.body[-1], ast.Expr):
-                py_code = ast.unparse(inner_tree.body[-1].value)
-                py_parts.append(py_code)
-            else:
-                py_parts.append("None")
-        elif t_type == "VAR":
-            py_parts.append(t_val)
-        else:
-            # Handle command identifiers inside conditions like math::sqrt -> math.sqrt
-            val = t_val
-            if "::" in val:
-                val = val.replace("::", ".")
-            py_parts.append(val)
-            
-    py_expr_str = " ".join(py_parts)
-    return ast.parse(py_expr_str, mode='eval').body
-
-def tokens_to_ast(tokens: list[tuple[str, str]]) -> ast.Module:
-    """Transforms Tcl token streams into a Python AST supporting control flow and core commands."""
-    body = []
-    commands = parse_commands(tokens)
-
-    i = 0
-    n = len(commands)
-    while i < n:
-        cmd = commands[i]
-        if not cmd:
-            i += 1
-            continue
-        
-        cmd_token_type, cmd_token_val = cmd[0]
-        
-        if cmd_token_type == "BRACKET":
-            node = compile_word_to_node("BRACKET", cmd_token_val)
-            body.append(ast.Expr(value=node))
-            i += 1
-            continue
-        
-        cmd_val = cmd_token_val
-        
-        # 1. set var val
-        if cmd_val == "set" and len(cmd) >= 3:
-            var_name = cmd[1][1]
-            val_type, val_val = cmd[2]
-            val_node = compile_word_to_node(val_type, val_val)
-            body.append(ast.Assign(
-                targets=[ast.Name(id=var_name, ctx=ast.Store())],
-                value=val_node
-            ))
-            i += 1
-            continue
-
-        # 2. unset var
-        if cmd_val == "unset" and len(cmd) >= 2:
-            var_name = cmd[1][1]
-            body.append(ast.Delete(targets=[ast.Name(id=var_name, ctx=ast.Del())]))
-            i += 1
-            continue
-
-        # 3. incr var [amount]
-        if cmd_val == "incr" and len(cmd) >= 2:
-            var_name = cmd[1][1]
-            amount_node = ast.Constant(value=1)
-            if len(cmd) >= 3:
-                amount_node = compile_word_to_node(cmd[2][0], cmd[2][1])
-            body.append(ast.AugAssign(
-                target=ast.Name(id=var_name, ctx=ast.Store()),
-                op=ast.Add(),
-                value=amount_node
-            ))
-            i += 1
-            continue
-
-        # 4. return val
-        if cmd_val == "return":
-            ret_val = None
-            if len(cmd) >= 2:
-                ret_val = compile_word_to_node(cmd[1][0], cmd[1][1])
-            body.append(ast.Return(value=ret_val))
-            i += 1
-            continue
-
-        # 5. break / continue
-        if cmd_val == "break":
-            body.append(ast.Break())
-            i += 1
-            continue
-        if cmd_val == "continue":
-            body.append(ast.Continue())
-            i += 1
-            continue
-
-        # 6. proc name {args} {body}
-        if cmd_val == "proc" and len(cmd) >= 4:
-            proc_name = cmd[1][1]
-            arg_tokens = cmd[2][1].split() if cmd[2][0] == "BRACED" else []
-            args = ast.arguments(
-                posonlyargs=[],
-                args=[ast.arg(arg) for arg in arg_tokens],
-                kwonlyargs=[],
-                kw_defaults=[],
-                defaults=[]
-            )
-            body_source = cmd[3][1] if cmd[3][0] == "BRACED" else ""
-            inner_tokens = tokenize(body_source)
-            inner_tree = tokens_to_ast(inner_tokens)
-            func_body = inner_tree.body
-            if not func_body:
-                func_body = [ast.Return(value=ast.Constant(value=None))]
-
-            body.append(ast.FunctionDef(
-                name=proc_name,
-                args=args,
-                body=func_body,
-                decorator_list=[]
-            ))
-            i += 1
-            continue
-
-        # 7. while {condition} {body}
-        if cmd_val == "while" and len(cmd) >= 3:
-            cond_str = cmd[1][1]
-            test_node = compile_tcl_expr(cond_str)
-            body_source = cmd[2][1] if cmd[2][0] == "BRACED" else ""
-            inner_tree = tokens_to_ast(tokenize(body_source))
-            loop_body = inner_tree.body or [ast.Pass()]
-
-            body.append(ast.While(test=test_node, body=loop_body, orelse=[]))
-            i += 1
-            continue
-
-        # 8. foreach var {list} {body}
-        if cmd_val == "foreach" and len(cmd) >= 4:
-            var_name = cmd[1][1]
-            list_token_type, list_token_val = cmd[2]
-            
-            items = list_token_val.split()
-            iter_node = ast.List(elts=[compile_word_to_node("WORD", item) for item in items], ctx=ast.Load())
-            
-            body_source = cmd[3][1] if cmd[3][0] == "BRACED" else ""
-            inner_tree = tokens_to_ast(tokenize(body_source))
-            loop_body = inner_tree.body or [ast.Pass()]
-
-            body.append(ast.For(
-                target=ast.Name(id=var_name, ctx=ast.Store()),
-                iter=iter_node,
-                body=loop_body,
-                orelse=[]
-            ))
-            i += 1
-            continue
-
-        # 9. if {condition} {body} [elseif ...] [else {body}]
-        if cmd_val == "if" and len(cmd) >= 3:
-            cond_str = cmd[1][1]
-            test_node = compile_tcl_expr(cond_str)
-            body_source = cmd[2][1] if cmd[2][0] == "BRACED" else ""
-            if_body = tokens_to_ast(tokenize(body_source)).body or [ast.Pass()]
-            
-            orelse = []
-            idx = 3
-            while idx < len(cmd):
-                keyword = cmd[idx][1]
-                if keyword == "elseif" and idx + 2 < len(cmd):
-                    elif_cond = cmd[idx+1][1]
-                    elif_test = compile_tcl_expr(elif_cond)
-                    elif_body = tokens_to_ast(tokenize(cmd[idx+2][1])).body or [ast.Pass()]
-                    orelse = [ast.If(test=elif_test, body=elif_body, orelse=[])]
-                    idx += 3
-                elif keyword == "else" and idx + 1 < len(cmd):
-                    else_body = tokens_to_ast(tokenize(cmd[idx+1][1])).body or [ast.Pass()]
-                    orelse = else_body
-                    idx += 2
-                else:
+def compile_tcl_quoted(quoted_str: str) -> ast.AST:
+    """Compile a Tcl double-quoted string into a Python f-string AST node, resolving $vars and [...] brackets."""
+    quoted_str = re.sub(r'\$([a-zA-Z_][a-zA-Z0-9_-]*)\(([a-zA-Z0-9_#-]+)\)', lambda m: f'{{tcl_get_array("{m.group(1).replace("-", "_")}", "{m.group(2)}", locals())}}', quoted_str)
+    
+    while "[" in quoted_str:
+        start = -1
+        depth = 0
+        for idx, char in enumerate(quoted_str):
+            if char == "[":
+                if depth == 0:
+                    start = idx
+                depth += 1
+            elif char == "]":
+                depth -= 1
+                if depth == 0 and start != -1:
+                    end = idx
+                    bracket_content = quoted_str[start+1:end]
+                    sub_tree = compile_tcl(bracket_content)
+                    if sub_tree.body and isinstance(sub_tree.body[-1], ast.Expr):
+                        call_node = sub_tree.body[-1].value
+                        py_code = ast.unparse(call_node)
+                        if py_code.startswith("*"):
+                            py_code = f"({py_code})"
+                    else:
+                        py_code = "None"
+                    quoted_str = quoted_str[:start] + "{" + py_code + "}" + quoted_str[end+1:]
                     break
-
-            body.append(ast.If(test=test_node, body=if_body, orelse=orelse))
-            i += 1
-            continue
-
-        # 10. Standard command / function calls
-        if cmd_val == "py::import":
-            func_node = ast.Name(id="py_import", ctx=ast.Load())
         else:
-            func_node = parse_identifier(cmd_val)
+            break
 
-        args = []
-        for t_type, t_val in cmd[1:]:
-            args.append(compile_word_to_node(t_type, t_val))
+    converted = re.sub(r'\$([a-zA-Z_][a-zA-Z0-9_-]*)', lambda m: f'{{{m.group(1).replace("-", "_")}}}', quoted_str)
+    converted = re.sub(r'\{([a-zA-Z_][a-zA-Z0-9_-]*)::([a-zA-Z_][a-zA-Z0-9_-]*)\}', lambda m: f'{{{m.group(1).replace("-", "_")}.{m.group(2).replace("-", "_")}}}', converted)
+    
+    escaped = converted.replace('\\', '\\\\').replace('"""', '\\"""')
+    f_str_code = f'f"""{escaped}"""'
+    try:
+        return ast.parse(f_str_code, mode='eval').body
+    except Exception:
+        return ast.Constant(value=quoted_str)
 
-        body.append(ast.Expr(
-            value=ast.Call(
-                func=func_node,
-                args=args,
-                keywords=[]
-            )
-        ))
-        i += 1
+def parse_tcl_arg_node(arg_type: str, arg_val: str) -> ast.AST:
+    """Convert a token into the appropriate AST node for function calls/commands, supporting Python constants and dotted attributes."""
+    if arg_type == "VAR":
+        py_var = arg_val.replace("-", "_")
+        return ast.Name(id=py_var, ctx=ast.Load())
+    elif arg_type == "QUOTED":
+        return compile_tcl_quoted(arg_val)
+    elif arg_type == "BRACED":
+        return ast.Constant(value=parse_tcl_literal(arg_val))
+    elif arg_type == "BRACKET":
+        sub_tree = compile_tcl(arg_val[1:-1])
+        if sub_tree.body and isinstance(sub_tree.body[-1], ast.Expr):
+            return sub_tree.body[-1].value
+        return ast.Constant(value="")
+    else:
+        # Handle native Python constants in unquoted words
+        if arg_val == "None":
+            return ast.Constant(value=None)
+        if arg_val == "True":
+            return ast.Constant(value=True)
+        if arg_val == "False":
+            return ast.Constant(value=False)
+            
+        lit = parse_tcl_literal(arg_val)
+        if isinstance(lit, str) and "." in lit and not lit.replace(".", "", 1).isdigit():
+            parts = lit.split(".")
+            node = ast.Name(id=parts[0].replace("-", "_"), ctx=ast.Load())
+            for p in parts[1:]:
+                node = ast.Attribute(value=node, attr=p.replace("-", "_"), ctx=ast.Load())
+            return node
+        return ast.Constant(value=lit)
 
-    return ast.Module(body=body, type_ignores=[])
+class TclExprTransformer(ast.NodeTransformer):
+    """Automatically wrap variable lookups in Tcl expressions with _tcl_num coercion."""
+    def visit_Name(self, node):
+        return ast.Call(
+            func=ast.Name(id='_tcl_num', ctx=ast.Load()),
+            args=[node],
+            keywords=[]
+        )
 
-def compile_tcl(source: str) -> ast.AST:
+def compile_tcl_expr(expr_str: str) -> list[ast.AST]:
+    """Compile a Tcl expression string into a list of Python AST expression nodes, resolving [...] brackets."""
+    expr_str = re.sub(r'\$([a-zA-Z_][a-zA-Z0-9_-]*)\(([a-zA-Z0-9_#-]+)\)', lambda m: f'tcl_get_array("{m.group(1).replace("-", "_")}", "{m.group(2)}", locals())', expr_str)
+
+    while "[" in expr_str:
+        start = -1
+        depth = 0
+        for idx, char in enumerate(expr_str):
+            if char == "[":
+                if depth == 0:
+                    start = idx
+                depth += 1
+            elif char == "]":
+                depth -= 1
+                if depth == 0 and start != -1:
+                    end = idx
+                    bracket_content = expr_str[start+1:end]
+                    
+                    sub_tree = compile_tcl(bracket_content)
+                    if sub_tree.body and isinstance(sub_tree.body[-1], ast.Expr):
+                        call_node = sub_tree.body[-1].value
+                        py_code = ast.unparse(call_node)
+                    else:
+                        py_code = "None"
+                    
+                    expr_str = expr_str[:start] + py_code + expr_str[end+1:]
+                    break
+        else:
+            break
+
+    tokens = tokenize(expr_str)
+    if len(tokens) == 1 and tokens[0][0] == "VAR":
+        py_var = tokens[0][1].replace("-", "_")
+        return [ast.Call(
+            func=ast.Name(id='_tcl_num', ctx=ast.Load()),
+            args=[ast.Name(id=py_var, ctx=ast.Load())],
+            keywords=[]
+        )]
+    
+    code_str = expr_str
+    code_str = re.sub(r'\$([a-zA-Z_][a-zA-Z0-9_-]*)', lambda m: m.group(1).replace("-", "_"), code_str)
+    code_str = re.sub(r'([a-zA-Z_][a-zA-Z0-9_-]*)::([a-zA-Z_][a-zA-Z0-9_-]*)', lambda m: f"{m.group(1).replace('-', '_')}.{m.group(2).replace('-', '_')}", code_str)
+    
+    try:
+        parsed = ast.parse(code_str, mode='eval')
+        transformed = TclExprTransformer().visit(parsed.body)
+        return [transformed]
+    except Exception:
+        return [ast.Constant(value=expr_str)]
+
+def compile_tcl(source: str) -> ast.Module:
+    """Compile Tcl source code into a CPython AST Module."""
     tokens = tokenize(source)
-    tree = tokens_to_ast(tokens)
-    ast.fix_missing_locations(tree)
-    return tree
+    body = []
+    
+    i = 0
+    while i < len(tokens):
+        t_type, t_val = tokens[i]
+        
+        if t_type == "WORD" and t_val == "set":
+            i += 1
+            if i < len(tokens):
+                var_raw = tokens[i][1]
+                py_var_target = var_raw.replace("-", "_")
+                i += 1
+                if i < len(tokens):
+                    val_type, val_val = tokens[i]
+                    val_node = parse_tcl_arg_node(val_type, val_val)
+                    
+                    arr_match = re.match(r'^([a-zA-Z_][a-zA-Z0-9_-]*)\(([a-zA-Z0-9_#-]+)\)$', var_raw)
+                    if arr_match:
+                        arr_name = arr_match.group(1).replace("-", "_")
+                        arr_key = arr_match.group(2)
+                        body.append(ast.Expr(
+                            value=ast.Call(
+                                func=ast.Name(id="tcl_set_array", ctx=ast.Load()),
+                                args=[ast.Constant(value=arr_name), ast.Constant(value=arr_key), val_node],
+                                keywords=[]
+                            )
+                        ))
+                    elif "." in var_raw:
+                        parts = var_raw.split(".")
+                        node = ast.Name(id=parts[0].replace("-", "_"), ctx=ast.Load())
+                        for p in parts[1:-1]:
+                            node = ast.Attribute(value=node, attr=p.replace("-", "_"), ctx=ast.Load())
+                        target_node = ast.Attribute(value=node, attr=parts[-1].replace("-", "_"), ctx=ast.Store())
+                        body.append(ast.Assign(
+                            targets=[target_node],
+                            value=val_node
+                        ))
+                    else:
+                        body.append(ast.Assign(
+                            targets=[ast.Name(id=py_var_target, ctx=ast.Store())],
+                            value=val_node
+                        ))
+        
+        elif t_type == "WORD" and t_val == "array":
+            i += 1
+            args = []
+            while i < len(tokens) and tokens[i][0] != "NEWLINE":
+                arg_type, arg_val = tokens[i]
+                args.append(parse_tcl_arg_node(arg_type, arg_val))
+                i += 1
+            body.append(ast.Expr(
+                value=ast.Call(
+                    func=ast.Name(id="tcl_array", ctx=ast.Load()),
+                    args=args,
+                    keywords=[]
+                )
+            ))
+            i -= 1
+
+        elif t_type == "WORD" and t_val == "dict":
+            i += 1
+            if i < len(tokens):
+                sub_type, sub_val = tokens[i]
+                i += 1
+                if sub_val == "for":
+                    if i < len(tokens):
+                        vars_val = tokens[i][1]
+                        i += 1
+                        if i < len(tokens):
+                            dict_type, dict_val = tokens[i]
+                            i += 1
+                            if i < len(tokens):
+                                body_type, body_val = tokens[i]
+                                var_names = vars_val.split()
+                                key_var = var_names[0].replace("-", "_") if len(var_names) > 0 else "k"
+                                val_var = var_names[1].replace("-", "_") if len(var_names) > 1 else "v"
+                                
+                                dict_source = parse_tcl_arg_node(dict_type, dict_val)
+                                loop_body_tree = compile_tcl(body_val)
+                                loop_body = loop_body_tree.body if loop_body_tree.body else [ast.Pass()]
+                                
+                                body.append(ast.For(
+                                    target=ast.Tuple(elts=[ast.Name(id=key_var, ctx=ast.Store()), ast.Name(id=val_var, ctx=ast.Store())], ctx=ast.Store()),
+                                    iter=ast.Call(
+                                        func=ast.Name(id="tcl_dict_items", ctx=ast.Load()),
+                                        args=[dict_source],
+                                        keywords=[]
+                                    ),
+                                    body=loop_body,
+                                    orelse=[]
+                                ))
+                elif sub_val == "set":
+                    if i < len(tokens):
+                        var_name = tokens[i][1].replace("-", "_")
+                        i += 1
+                        keys_and_val = []
+                        while i < len(tokens) and tokens[i][0] != "NEWLINE":
+                            arg_type, arg_val = tokens[i]
+                            keys_and_val.append(parse_tcl_arg_node(arg_type, arg_val))
+                            i += 1
+                        body.append(ast.Expr(
+                            value=ast.Call(
+                                func=ast.Name(id="tcl_dict_set", ctx=ast.Load()),
+                                args=[ast.Constant(value=var_name)] + keys_and_val,
+                                keywords=[]
+                            )
+                        ))
+                else:
+                    args = [ast.Constant(value=sub_val)]
+                    while i < len(tokens) and tokens[i][0] != "NEWLINE":
+                        arg_type, arg_val = tokens[i]
+                        args.append(parse_tcl_arg_node(arg_type, arg_val))
+                        i += 1
+                    body.append(ast.Expr(
+                        value=ast.Call(
+                            func=ast.Name(id="tcl_dict", ctx=ast.Load()),
+                            args=args,
+                            keywords=[]
+                        )
+                    ))
+            i -= 1
+
+        elif t_type == "WORD" and t_val == "puts":
+            i += 1
+            args = []
+            while i < len(tokens) and tokens[i][0] != "NEWLINE":
+                arg_type, arg_val = tokens[i]
+                if arg_type == "VAR":
+                    py_var = arg_val.replace("-", "_")
+                    args.append(ast.Call(
+                        func=ast.Name(id="tcl_format_output", ctx=ast.Load()),
+                        args=[ast.Name(id=py_var, ctx=ast.Load())],
+                        keywords=[]
+                    ))
+                else:
+                    args.append(parse_tcl_arg_node(arg_type, arg_val))
+                i += 1
+            
+            body.append(ast.Expr(
+                value=ast.Call(
+                    func=ast.Name(id="puts", ctx=ast.Load()),
+                    args=args,
+                    keywords=[]
+                )
+            ))
+
+        elif t_type == "WORD" and t_val == "expr":
+            i += 1
+            if i < len(tokens):
+                arg_type, arg_val = tokens[i]
+                body.append(ast.Expr(
+                    value=ast.Call(
+                        func=ast.Name(id="expr", ctx=ast.Load()),
+                        args=[ast.Constant(value=arg_val)],
+                        keywords=[]
+                    )
+                ))
+
+        elif t_type == "WORD" and t_val == "exec":
+            i += 1
+            args = []
+            while i < len(tokens) and tokens[i][0] != "NEWLINE":
+                arg_type, arg_val = tokens[i]
+                args.append(parse_tcl_arg_node(arg_type, arg_val))
+                i += 1
+            body.append(ast.Expr(
+                value=ast.Call(
+                    func=ast.Name(id="tcl_exec", ctx=ast.Load()),
+                    args=args,
+                    keywords=[]
+                )
+            ))
+            i -= 1
+
+        elif t_type == "WORD" and t_val == "eval":
+            i += 1
+            args = []
+            while i < len(tokens) and tokens[i][0] != "NEWLINE":
+                arg_type, arg_val = tokens[i]
+                args.append(parse_tcl_arg_node(arg_type, arg_val))
+                i += 1
+            body.append(ast.Expr(
+                value=ast.Call(
+                    func=ast.Name(id="tcl_eval", ctx=ast.Load()),
+                    args=args,
+                    keywords=[]
+                )
+            ))
+            i -= 1
+
+        elif t_type == "WORD" and t_val == "subst":
+            i += 1
+            args = []
+            while i < len(tokens) and tokens[i][0] != "NEWLINE":
+                arg_type, arg_val = tokens[i]
+                args.append(parse_tcl_arg_node(arg_type, arg_val))
+                i += 1
+            body.append(ast.Expr(
+                value=ast.Call(
+                    func=ast.Name(id="tcl_subst", ctx=ast.Load()),
+                    args=args,
+                    keywords=[]
+                )
+            ))
+            i -= 1
+
+        elif t_type == "WORD" and t_val == "incr":
+            i += 1
+            if i < len(tokens):
+                var_name = tokens[i][1].replace("-", "_")
+                i += 1
+                increment = 1
+                if i < len(tokens) and tokens[i][0] != "NEWLINE":
+                    increment = int(tokens[i][1])
+                    i += 1
+                
+                body.append(ast.Assign(
+                    targets=[ast.Name(id=var_name, ctx=ast.Store())],
+                    value=ast.BinOp(
+                        left=ast.Name(id=var_name, ctx=ast.Load()),
+                        op=ast.Add(),
+                        right=ast.Constant(value=increment)
+                    )
+                ))
+            i -= 1
+
+        elif t_type == "WORD" and t_val == "continue":
+            body.append(ast.Continue())
+            while i < len(tokens) and tokens[i][0] != "NEWLINE":
+                i += 1
+
+        elif t_type == "WORD" and t_val == "break":
+            body.append(ast.Break())
+            while i < len(tokens) and tokens[i][0] != "NEWLINE":
+                i += 1
+
+        elif t_type == "WORD" and t_val == "while":
+            i += 1
+            if i < len(tokens):
+                cond_type, cond_val = tokens[i]
+                i += 1
+                if i < len(tokens):
+                    body_type, body_val = tokens[i]
+                    cond_expr = compile_tcl_expr(cond_val)[0]
+                    loop_body_tree = compile_tcl(body_val)
+                    loop_body = loop_body_tree.body if loop_body_tree.body else [ast.Pass()]
+                    
+                    body.append(ast.While(
+                        test=cond_expr,
+                        body=loop_body,
+                        orelse=[]
+                    ))
+
+        elif t_type == "WORD" and t_val == "foreach":
+            i += 1
+            if i < len(tokens):
+                var_name = tokens[i][1].replace("-", "_")
+                i += 1
+                if i < len(tokens):
+                    list_type, list_val = tokens[i]
+                    i += 1
+                    if i < len(tokens):
+                        body_type, body_val = tokens[i]
+                        iter_target = ast.Name(id=var_name, ctx=ast.Store())
+                        iter_source = ast.Name(id=list_val.replace("-", "_"), ctx=ast.Load()) if list_type == "VAR" else ast.Constant(value=parse_tcl_literal(list_val))
+                        
+                        loop_body_tree = compile_tcl(body_val)
+                        loop_body = loop_body_tree.body if loop_body_tree.body else [ast.Pass()]
+                        
+                        body.append(ast.For(
+                            target=iter_target,
+                            iter=ast.Call(
+                                func=ast.Name(id="tcl_get_list", ctx=ast.Load()),
+                                args=[iter_source],
+                                keywords=[]
+                            ),
+                            body=loop_body,
+                            orelse=[]
+                        ))
+
+        elif t_type == "WORD" and t_val == "if":
+            i += 1
+            if i < len(tokens):
+                cond_type, cond_val = tokens[i]
+                i += 1
+                if i < len(tokens):
+                    body_type, body_val = tokens[i]
+                    cond_expr = compile_tcl_expr(cond_val)[0]
+                    if_body_tree = compile_tcl(body_val)
+                    if_body = if_body_tree.body if if_body_tree.body else [ast.Pass()]
+                    
+                    i += 1
+                    
+                    def parse_elif_else():
+                        nonlocal i
+                        if i < len(tokens):
+                            nxt_type, nxt_val = tokens[i]
+                            if nxt_type == "WORD" and nxt_val == "elseif":
+                                i += 1
+                                if i < len(tokens):
+                                    e_cond = tokens[i][1]
+                                    i += 1
+                                    if i < len(tokens):
+                                        e_body = tokens[i][1]
+                                        i += 1
+                                        e_cond_expr = compile_tcl_expr(e_cond)[0]
+                                        e_body_tree = compile_tcl(e_body)
+                                        e_body_nodes = e_body_tree.body if e_body_tree.body else [ast.Pass()]
+                                        return [ast.If(test=e_cond_expr, body=e_body_nodes, orelse=parse_elif_else())]
+                            elif nxt_type == "WORD" and nxt_val == "else":
+                                i += 1
+                                if i < len(tokens):
+                                    else_body_tree = compile_tcl(tokens[i][1])
+                                    i += 1
+                                    return else_body_tree.body if else_body_tree.body else [ast.Pass()]
+                        return []
+
+                    orelse = parse_elif_else()
+                    
+                    body.append(ast.If(
+                        test=cond_expr,
+                        body=if_body,
+                        orelse=orelse
+                    ))
+            i -= 1
+
+        elif t_type == "WORD" and t_val == "proc":
+            i += 1
+            if i < len(tokens):
+                proc_name = tokens[i][1]
+                i += 1
+                if i < len(tokens):
+                    args_type, args_val = tokens[i]
+                    i += 1
+                    if i < len(tokens):
+                        body_type, body_val = tokens[i]
+                        arg_names = [arg.replace("-", "_") for arg in args_val.split()]
+                        arguments = ast.arguments(
+                            posonlyargs=[],
+                            args=[ast.arg(arg=arg) for arg in arg_names],
+                            kwonlyargs=[],
+                            kw_defaults=[],
+                            defaults=[]
+                        )
+                        func_body_tree = compile_tcl(body_val)
+                        func_body = func_body_tree.body if func_body_tree.body else [ast.Return(value=ast.Constant(value=""))]
+                        
+                        body.append(ast.FunctionDef(
+                            name=proc_name,
+                            args=arguments,
+                            body=func_body,
+                            decorator_list=[]
+                        ))
+
+        elif t_type == "WORD" and t_val == "return":
+            i += 1
+            ret_val = ast.Constant(value="")
+            if i < len(tokens) and tokens[i][0] != "NEWLINE":
+                arg_type, arg_val = tokens[i]
+                ret_val = parse_tcl_arg_node(arg_type, arg_val)
+                i += 1
+            body.append(ast.Return(value=ret_val))
+            i -= 1
+
+        elif t_type == "WORD" and t_val == "py::import":
+            i += 1
+            if i < len(tokens):
+                mod_name = tokens[i][1]
+                body.append(ast.Assign(
+                    targets=[ast.Name(id=mod_name, ctx=ast.Store())],
+                    value=ast.Call(
+                        func=ast.Name(id="py_import", ctx=ast.Load()),
+                        args=[ast.Constant(value=mod_name)],
+                        keywords=[]
+                    )
+                ))
+
+        elif t_type == "VAR":
+            py_var = t_val.replace("-", "_")
+            i += 1
+            if i < len(tokens) and tokens[i][0] != "NEWLINE":
+                method_type, method_val = tokens[i]
+                method_name = method_val
+                i += 1
+                args = []
+                while i < len(tokens) and tokens[i][0] != "NEWLINE":
+                    arg_type, arg_val = tokens[i]
+                    args.append(parse_tcl_arg_node(arg_type, arg_val))
+                    i += 1
+                
+                func_node = ast.Attribute(
+                    value=ast.Name(id=py_var, ctx=ast.Load()),
+                    attr=method_name,
+                    ctx=ast.Load()
+                )
+                body.append(ast.Expr(
+                    value=ast.Call(
+                        func=func_node,
+                        args=args,
+                        keywords=[]
+                    )
+                ))
+            i -= 1
+
+        elif t_type == "WORD":
+            cmd_name = t_val.replace("::", ".")
+            i += 1
+            args = []
+            while i < len(tokens) and tokens[i][0] != "NEWLINE":
+                arg_type, arg_val = tokens[i]
+                args.append(parse_tcl_arg_node(arg_type, arg_val))
+                i += 1
+            
+            if "." in cmd_name:
+                parts = cmd_name.split(".")
+                func_node = ast.Name(id=parts[0].replace("-", "_"), ctx=ast.Load())
+                for part in parts[1:]:
+                    func_node = ast.Attribute(value=func_node, attr=part.replace("-", "_"), ctx=ast.Load())
+            else:
+                func_node = ast.Name(id=cmd_name, ctx=ast.Load())
+
+            body.append(ast.Expr(
+                value=ast.Call(
+                    func=func_node,
+                    args=args,
+                    keywords=[]
+                )
+            ))
+            
+        i += 1
+        
+    return ast.Module(body=body, type_ignores=[])

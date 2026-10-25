@@ -1,0 +1,7 @@
+10:00:01|sensor_alpha|INFO|22.4
+10:00:02|sensor_beta|WARN|78.9
+10:00:03|sensor_alpha|INFO|23.1
+10:00:04|sensor_gamma|ERROR|104.5
+10:00:05|sensor_beta|INFO|45.0
+10:00:06|sensor_alpha|WARN|82.3
+10:00:07|sensor_gamma|INFO|55.1

@@ -1,21 +1,22 @@
-﻿# src/runtime.py
+# src/runtime.py
 import importlib
 import ast
 import re
 import inspect
+import subprocess
 from src.compiler import compile_tcl
 
 def tcl_expr(expr_str: str, *args) -> float | int:
     """Evaluate Tcl-style mathematical expressions by translating $var and using Python eval."""
     if args:
         expr_str = " ".join([expr_str] + [str(arg) for arg in args])
-    
+
     python_expr = re.sub(r'\$([a-zA-Z_][a-zA-Z0-9_]*)', r'\1', expr_str)
-    
+
     frame = inspect.currentframe().f_back
     env = frame.f_locals.copy()
     env.update(frame.f_globals)
-    
+
     return eval(python_expr, env, env)
 
 def tcl_format_output(val) -> str:
@@ -31,13 +32,13 @@ def tcl_puts(*args):
     if not args:
         print()
         return ""
-    
+
     if args[0] in ("stdout", "stderr"):
         args = args[1:]
         if not args:
             print()
             return ""
-            
+
     if args[0] == "-nonewline":
         print(*(str(a) for a in args[1:]), end="")
     else:
@@ -65,16 +66,43 @@ def tcl_lappend(var_name: str, *elements) -> str:
     env = frame.f_locals
     if var_name not in env:
         env = frame.f_globals
-    
+
     current = env.get(var_name, [])
     if not isinstance(current, list):
         current = list(str(current).split())
-    
+
     for el in elements:
         current.append(el)
-    
+
     env[var_name] = current
     return tcl_format_output(current)
+
+def tcl_exec(*args):
+    """Emulates Tcl's exec command by running external processes via subprocess."""
+    if not args:
+        return ""
+    cmd = list(args)
+    if len(cmd) == 1 and isinstance(cmd[0], str):
+        full_cmd = cmd[0]
+    else:
+        full_cmd = " ".join(str(a) for a in cmd)
+    
+    try:
+        result = subprocess.run(full_cmd, shell=True, capture_output=True, text=True)
+        if result.stdout:
+            print(result.stdout, end="")
+        if result.stderr:
+            print(result.stderr, end="")
+        return result.stdout.strip() if result.stdout else ""
+    except Exception as e:
+        print(f"Error executing command: {e}")
+        return ""
+
+def _print_tcl_result(val):
+    formatted = tcl_format_output(val)
+    if formatted:
+        print(formatted)
+    return ""
 
 def execute_tcl(source: str, env: dict) -> None:
     """Compile and execute Tcl source code within the shared REPL environment dictionary."""
@@ -83,10 +111,13 @@ def execute_tcl(source: str, env: dict) -> None:
     env.setdefault("llength", tcl_llength)
     env.setdefault("lindex", tcl_lindex)
     env.setdefault("lappend", tcl_lappend)
+    env.setdefault("tcl_exec", tcl_exec)
+    env.setdefault("exec", tcl_exec)
     env.setdefault("tcl_format_output", tcl_format_output)
-    
+    env.setdefault("_print_tcl_result", _print_tcl_result)
+
     tree = compile_tcl(source)
-    
+
     # If the last node is an expression, wrap it cleanly to print formatted Tcl output if non-empty
     if tree.body and isinstance(tree.body[-1], ast.Expr):
         last_expr = tree.body[-1].value
@@ -97,15 +128,7 @@ def execute_tcl(source: str, env: dict) -> None:
                 keywords=[]
             )
         )
-    
-    ast.fix_missing_locations(tree)
-    
-    def _print_tcl_result(val):
-        formatted = tcl_format_output(val)
-        if formatted != "":
-            print(formatted)
 
-    env["_print_tcl_result"] = _print_tcl_result
-    
+    ast.fix_missing_locations(tree)
     code_obj = compile(tree, filename="<tclpy>", mode="exec")
-    exec(code_obj, env, env)
+    exec(code_obj, env)
