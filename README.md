@@ -62,3 +62,7 @@ tclpy/
 ├── tests/             # Unit and integration test suites
 ├── setup.py           # Pip installation configuration
 └── README.md          # Project documentation
+
+License
+
+MIT License
