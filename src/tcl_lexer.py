@@ -1,58 +1,72 @@
 ﻿# src/tcl_lexer.py
+import re
 
 def tokenize(source: str) -> list[tuple[str, str]]:
-    """
-    Parses flat Tcl string into token tuples (TYPE, VALUE).
-    Handles bare words, $variables, {braced strings}, and "quoted strings".
-    """
+    """Tokenize Tcl source code into a stream of typed tokens, supporting brackets and braces."""
     tokens = []
     i = 0
-    length = len(source)
-
-    while i < length:
-        char = source[i]
-
+    n = len(source)
+    
+    while i < n:
+        c = source[i]
+        
         # Skip whitespace
-        if char in " \t\r\n":
+        if c in " \t\r":
             i += 1
             continue
-
-        # Braced literal block { ... }
-        if char == "{":
-            start = i + 1
+            
+        # Newlines or semicolons act as statement separators
+        if c == "\n" or c == ";":
+            tokens.append(("NEWLINE", ";"))
+            i += 1
+            continue
+            
+        # Bracket command substitution: [...]
+        if c == "[":
             depth = 1
+            start = i
             i += 1
-            while i < length and depth > 0:
-                if source[i] == "{": depth += 1
-                elif source[i] == "}": depth -= 1
+            while i < n and depth > 0:
+                if source[i] == "[":
+                    depth += 1
+                elif source[i] == "]":
+                    depth -= 1
                 i += 1
-            tokens.append(("BRACED", source[start:i-1]))
+            tokens.append(("BRACKET", source[start:i]))
             continue
-
-        # Quoted string " ... "
-        if char == '"':
-            start = i + 1
+            
+        # Braced strings: {...}
+        if c == "{":
+            depth = 1
+            start = i
             i += 1
-            while i < length and source[i] != '"':
-                if source[i] == '\\': i += 1  # escape next char
+            while i < n and depth > 0:
+                if source[i] == "{":
+                    depth += 1
+                elif source[i] == "}":
+                    depth -= 1
                 i += 1
-            tokens.append(("STRING", source[start:i]))
-            i += 1
+            tokens.append(("BRACED", source[start+1:i-1]))
             continue
-
-        # Variable lookup $var
-        if char == "$":
-            start = i + 1
+            
+        # Variables: $var
+        if c == "$":
             i += 1
-            while i < length and (source[i].isalnum() or source[i] in "_:"):
-                i += 1
-            tokens.append(("VAR", source[start:i]))
+            match = re.match(r"[a-zA-Z_][a-zA-Z0-9_]*", source[i:])
+            if match:
+                var_name = match.group(0)
+                tokens.append(("VAR", var_name))
+                i += len(var_name)
             continue
-
-        # Bare word / command name
-        start = i
-        while i < length and source[i] not in " \t\r\n{}\"[]$":
-            i += 1
-        tokens.append(("WORD", source[start:i]))
-
+            
+        # Standard words / identifiers / numbers / strings
+        match = re.match(r'[^\s\[\]\{\};\$]+', source[i:])
+        if match:
+            word = match.group(0)
+            tokens.append(("WORD", word))
+            i += len(word)
+            continue
+            
+        i += 1
+        
     return tokens
