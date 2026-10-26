@@ -298,15 +298,19 @@ def compile_tcl(source: str) -> ast.Module:
 
         elif t_type == "WORD" and t_val == "expr":
             i += 1
-            if i < len(tokens):
+            args = []
+            while i < len(tokens) and tokens[i][0] != "NEWLINE":
                 arg_type, arg_val = tokens[i]
-                body.append(ast.Expr(
-                    value=ast.Call(
-                        func=ast.Name(id="expr", ctx=ast.Load()),
-                        args=[ast.Constant(value=arg_val)],
-                        keywords=[]
-                    )
-                ))
+                args.append(parse_tcl_arg_node(arg_type, arg_val))
+                i += 1
+            body.append(ast.Expr(
+                value=ast.Call(
+                    func=ast.Name(id="expr", ctx=ast.Load()),
+                    args=args,
+                    keywords=[]
+                )
+            ))
+            i -= 1
 
         elif t_type == "WORD" and t_val == "exec":
             i += 1

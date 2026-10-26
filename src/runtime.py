@@ -175,16 +175,25 @@ def tcl_close(chan_id: str) -> str:
         return ""
     raise ValueError(f"can not find channel named \"{chan_id}\"")
 
+
 def tcl_string(subcommand: str, *args) -> any:
     if subcommand == "length":
         return len(str(args[0]))
     elif subcommand == "match":
         pattern, string_val = args[0], args[1]
         return 1 if fnmatch.fnmatch(str(string_val), str(pattern)) else 0
+    elif subcommand == "index":
+        s = str(args[0])
+        idx_str = str(args[1])
+        idx = len(s) - 1 if idx_str == "end" else int(idx_str)
+        if idx < 0 or idx >= len(s):
+            return ""
+        return s[idx]
     elif subcommand == "range":
         s = str(args[0])
         first = int(args[1])
-        last = int(args[2]) if str(args[2]) != "end" else len(s) - 1
+        last_arg = str(args[2]) if len(args) > 2 else "end"
+        last = int(last_arg) if last_arg != "end" else len(s) - 1
         if first < 0:
             first = 0
         if last >= len(s):
@@ -192,6 +201,76 @@ def tcl_string(subcommand: str, *args) -> any:
         if first > last:
             return ""
         return s[first:last+1]
+    elif subcommand == "compare":
+        nocase = False
+        if args[0] == "-nocase":
+            nocase = True
+            args = args[1:]
+        s1, s2 = str(args[0]), str(args[1])
+        if nocase:
+            s1, s2 = s1.lower(), s2.lower()
+        if s1 < s2: return -1
+        if s1 > s2: return 1
+        return 0
+    elif subcommand == "equal":
+        nocase = False
+        if args[0] == "-nocase":
+            nocase = True
+            args = args[1:]
+        s1, s2 = str(args[0]), str(args[1])
+        if nocase:
+            return 1 if s1.lower() == s2.lower() else 0
+        return 1 if s1 == s2 else 0
+    elif subcommand == "first":
+        needle, haystack = str(args[0]), str(args[1])
+        return haystack.find(needle)
+    elif subcommand == "last":
+        needle, haystack = str(args[0]), str(args[1])
+        return haystack.rfind(needle)
+    elif subcommand == "tolower":
+        return str(args[0]).lower()
+    elif subcommand == "toupper":
+        return str(args[0]).upper()
+    elif subcommand == "trim":
+        s = str(args[0])
+        chars = str(args[1]) if len(args) > 1 else None
+        return s.strip(chars)
+    elif subcommand == "replace":
+        s = str(args[0])
+        first = int(args[1])
+        last_arg = str(args[2]) if str(args[3] if len(args) > 3 else "end") != "" else "end" # handle index args
+        # standard tcl: string replace string first last ?newstring?
+        # let's map carefully based on argument length
+        if len(args) >= 4:
+            last = len(s) - 1 if str(args[2]) == "end" else int(args[2])
+            new_str = str(args[3])
+        else:
+            last = len(s) - 1 if str(args[2]) == "end" else int(args[2])
+            new_str = ""
+        if first < 0: first = 0
+        if last >= len(s): last = len(s) - 1
+        if first > last:
+            return s
+        return s[:first] + new_str + s[last+1:]
+    elif subcommand == "is":
+        class_name = str(args[0])
+        val = str(args[-1])
+        strict = "-strict" in args
+        if class_name == "integer" or class_name == "digit":
+            try:
+                int(val)
+                return 1
+            except ValueError:
+                return 0
+        elif class_name == "double" or class_name == "wideInteger":
+            try:
+                float(val)
+                return 1
+            except ValueError:
+                return 0
+        elif class_name == "alpha":
+            return 1 if val.isalpha() else 0
+        return 0
     elif subcommand == "map":
         mapping_arg = args[0]
         s = str(args[1])
@@ -205,9 +284,10 @@ def tcl_string(subcommand: str, *args) -> any:
     else:
         raise ValueError(f"unknown subcommand \"{subcommand}\"")
 
-def tcl_expr(expr_str: str, *args) -> float | int:
-    if args:
-        expr_str = " ".join([expr_str] + [str(arg) for arg in args])
+
+def tcl_expr(expr_str: any, *args) -> float | int:
+    all_parts = [expr_str] + list(args)
+    expr_str = " ".join(str(arg) for arg in all_parts)
     if expr_str.startswith("{") and expr_str.endswith("}"):
         expr_str = expr_str[1:-1].strip()
     interp = _get_tkinter_interp()
@@ -244,33 +324,71 @@ def tcl_format_output(val) -> str:
 
 def tcl_get_list(val) -> list:
     if isinstance(val, (list, tuple)):
-        return list(val)
+        return [parse_tcl_value(item) if not isinstance(item, (list, dict)) else item for item in val]
     if isinstance(val, dict):
         res = []
         for k, v in val.items():
-            res.extend([str(k), str(v)])
+            res.extend([parse_tcl_value(k), parse_tcl_value(v)])
         return res
     if val is None:
         return []
     s = str(val).strip()
     if not s:
         return []
-    return s.split()
+    return [parse_tcl_value(item) for item in s.split()]
+
 
 def tcl_puts(*args):
     if not args:
         print()
         return ""
-    if args[0] in ("stdout", "stderr"):
-        args = args[1:]
-        if not args:
-            print()
+    if args[0] in _open_channels:
+        chan_id = args[0]
+        f = _open_channels[chan_id]
+        content_args = args[1:]
+        if not content_args:
+            f.write("\n")
             return ""
+        if content_args[0] == "-nonewline":
+            f.write("".join(str(a) for a in content_args[1:]))
+        else:
+            f.write(" ".join(str(a) for a in content_args) + "\n")
+        return ""
+    
     if args[0] == "-nonewline":
-        print(*(str(a) for a in args[1:]), end="")
+        print("".join(str(a) for a in args[1:]), end="")
     else:
-        print(*(str(a) for a in args))
+        print(" ".join(str(a) for a in args))
     return ""
+    # Existing stdout/stderr handling...
+
+def tcl_gets(chan_id: str, var_name: str = None) -> int | str:
+    if chan_id not in _open_channels:
+        raise ValueError(f"can not find channel named \"{chan_id}\"")
+    f = _open_channels[chan_id]
+    line = f.readline()
+    if not line:  # EOF
+        if var_name:
+            frame = inspect.currentframe().f_back
+            env = frame.f_locals
+            if var_name not in env:
+                env = frame.f_globals
+            env[var_name] = ""
+        return -1
+
+    if line.endswith('\r\n'):
+        line = line[:-2]
+    elif line.endswith('\n') or line.endswith('\r'):
+        line = line[:-1]
+
+    if var_name:
+        frame = inspect.currentframe().f_back
+        env = frame.f_locals
+        if var_name not in env:
+            env = frame.f_globals
+        env[var_name] = line
+        return len(line)
+    return line
 
 def tcl_llength(lst) -> int:
     return len(tcl_get_list(lst))
@@ -348,6 +466,7 @@ def execute_tcl(source: str, env: dict) -> None:
     env.setdefault("tcl_dict_set", tcl_dict_set)
     env.setdefault("tcl_dict_items", tcl_dict_items)
     env.setdefault("puts", tcl_puts)
+    env.setdefault("gets", tcl_gets)
     env.setdefault("open", tcl_open)
     env.setdefault("read", tcl_read)
     env.setdefault("close", tcl_close)
