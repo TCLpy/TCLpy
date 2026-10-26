@@ -21,7 +21,7 @@
 | **Control Flow** | `if` / `elseif` / `else`, `while`, `foreach`, `break`, `continue` |
 | **Procedures & Logic** | `proc`, `return`, `expr` |
 | **Collections** | `llength`, `lindex`, `lappend` |
-| **I/O & Output** | `puts`, `open` , `read`, `gets`, `puts`, and `close` |
+| **I/O & Output** | `puts`, `read`, `gets`, `open`, and `close` |
 | **Python Bridge** | `py::import` |
 
 ---
