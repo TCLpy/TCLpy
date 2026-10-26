@@ -1,13 +1,9 @@
-import sys
-import os
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-
 # src/compiler.py
 import ast
 import re
 
 try:
-    from tcl_lexer import tokenize
+    from .tcl_lexer import tokenize
 except ImportError:
     from tcl_lexer import tokenize
 

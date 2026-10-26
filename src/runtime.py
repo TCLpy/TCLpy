@@ -1,144 +1,255 @@
 # src/runtime.py
 import importlib
+import math
 import ast
 import re
 import inspect
 import subprocess
 import fnmatch
 import tkinter
-from src.compiler import compile_tcl
 
-_tcl_channels = {}
-_tcl_channel_counter = 0
-_tk_interp = None
+try:
+    from .compiler import compile_tcl, compile_tcl_expr
+except ImportError:
+    from compiler import compile_tcl, compile_tcl_expr
 
-def _get_tk():
-    global _tk_interp
-    if _tk_interp is None:
-        try:
-            _tk_interp = tkinter.Tcl()
-        except Exception:
-            pass
-    return _tk_interp
+_open_channels = {}
+_channel_counter = 0
+_tkinter_interp = None
 
-def tcl_expr(expr_str: str, *args) -> any:
-    """Evaluate Tcl expressions natively using tkinter's built-in Tcl interpreter."""
+def _get_tkinter_interp():
+    global _tkinter_interp
+    if _tkinter_interp is None:
+        _tkinter_interp = tkinter.Tcl()
+    return _tkinter_interp
+
+def py_import(mod_name: str):
+    return importlib.import_module(mod_name)
+
+def _tcl_num(val):
+    if isinstance(val, (int, float)):
+        return val
+    if val is None:
+        return 0
+    cleaned = str(val).strip()
+    if not cleaned:
+        return 0
+    try:
+        if "." in cleaned or "e" in cleaned.lower():
+            return float(cleaned)
+        return int(cleaned)
+    except ValueError:
+        return val
+
+def parse_tcl_value(val):
+    return _tcl_num(val)
+
+def tcl_set_array(arr_name: str, key: str, val: any) -> any:
+    frame = inspect.currentframe().f_back
+    env = frame.f_locals
+    if arr_name not in env:
+        env = frame.f_globals
+    if arr_name not in env or not isinstance(env[arr_name], dict):
+        env[arr_name] = {}
+    env[arr_name][str(key)] = val
+    return val
+
+def tcl_get_array(arr_name: str, key: str, local_env: dict = None) -> any:
+    frame = inspect.currentframe().f_back
+    env = frame.f_locals if frame else (local_env or {})
+    if arr_name not in env:
+        env = frame.f_globals if frame and hasattr(frame, 'f_globals') else {}
+    if arr_name in env and isinstance(env[arr_name], dict):
+        return env[arr_name].get(str(key), "")
+    return ""
+
+def tcl_array(subcommand: str, arr_name: str, *args) -> any:
+    frame = inspect.currentframe().f_back
+    env = frame.f_locals if frame else {}
+    if arr_name not in env:
+        env = frame.f_globals if hasattr(frame, 'f_globals') else {}
+    is_arr = arr_name in env and isinstance(env[arr_name], dict)
+    
+    if subcommand == "exists":
+        return 1 if is_arr else 0
+    elif subcommand == "size":
+        return len(env[arr_name]) if is_arr else 0
+    elif subcommand == "names":
+        if not is_arr:
+            return ""
+        keys = list(env[arr_name].keys())
+        pattern = args[0] if args else "*"
+        if pattern != "*":
+            keys = [k for k in keys if fnmatch.fnmatch(k, pattern)]
+        return " ".join(keys)
+    else:
+        raise ValueError(f"unknown or unsupported array subcommand \"{subcommand}\"")
+
+def tcl_dict(subcommand: str, *args) -> any:
+    if subcommand == "create":
+        d = {}
+        for i in range(0, len(args), 2):
+            if i + 1 < len(args):
+                d[str(args[i])] = args[i+1]
+        return d
+    elif subcommand == "get":
+        if not args:
+            return ""
+        d = args[0]
+        keys = args[1:]
+        curr = d
+        for k in keys:
+            if isinstance(curr, dict):
+                curr = curr.get(str(k), "")
+            else:
+                return ""
+        return curr
+    elif subcommand == "keys":
+        if not args:
+            return ""
+        d = args[0]
+        if isinstance(d, dict):
+            return " ".join(str(k) for k in d.keys())
+        return ""
+    elif subcommand == "size":
+        if not args:
+            return 0
+        d = args[0]
+        if isinstance(d, dict):
+            return len(d)
+        return 0
+    else:
+        raise ValueError(f"unknown or unsupported dict subcommand \"{subcommand}\"")
+
+def tcl_dict_set(var_name: str, *args) -> any:
+    frame = inspect.currentframe().f_back
+    env = frame.f_locals
+    if var_name not in env:
+        env = frame.f_globals
+    if var_name not in env or not isinstance(env[var_name], dict):
+        env[var_name] = {}
+    d = env[var_name]
+    keys = args[:-1]
+    val = args[-1]
+    curr = d
+    for k in keys[:-1]:
+        sk = str(k)
+        if sk not in curr or not isinstance(curr[sk], dict):
+            curr[sk] = {}
+        curr = curr[sk]
+    if keys:
+        curr[str(keys[-1])] = val
+    env[var_name] = d
+    return d
+
+def tcl_dict_items(d) -> list:
+    if isinstance(d, dict):
+        return list(d.items())
+    return []
+
+def tcl_open(filename: str, mode: str = "r") -> str:
+    global _channel_counter
+    py_mode = mode
+    if "r" in mode and "+" not in mode:
+        py_mode = "r"
+    elif "w" in mode:
+        py_mode = "w"
+    elif "a" in mode:
+        py_mode = "a"
+    f = open(filename, py_mode, encoding="utf-8")
+    _channel_counter += 1
+    chan_id = f"file{_channel_counter}"
+    _open_channels[chan_id] = f
+    return chan_id
+
+def tcl_read(chan_id: str) -> str:
+    if chan_id in _open_channels:
+        content = _open_channels[chan_id].read()
+        return content.replace('\r\n', '\n').replace('\r', '\n')
+    raise ValueError(f"can not find channel named \"{chan_id}\"")
+
+def tcl_close(chan_id: str) -> str:
+    if chan_id in _open_channels:
+        _open_channels[chan_id].close()
+        del _open_channels[chan_id]
+        return ""
+    raise ValueError(f"can not find channel named \"{chan_id}\"")
+
+def tcl_string(subcommand: str, *args) -> any:
+    if subcommand == "length":
+        return len(str(args[0]))
+    elif subcommand == "match":
+        pattern, string_val = args[0], args[1]
+        return 1 if fnmatch.fnmatch(str(string_val), str(pattern)) else 0
+    elif subcommand == "range":
+        s = str(args[0])
+        first = int(args[1])
+        last = int(args[2]) if str(args[2]) != "end" else len(s) - 1
+        if first < 0:
+            first = 0
+        if last >= len(s):
+            last = len(s) - 1
+        if first > last:
+            return ""
+        return s[first:last+1]
+    elif subcommand == "map":
+        mapping_arg = args[0]
+        s = str(args[1])
+        pairs = tcl_get_list(mapping_arg)
+        mapping_dict = {str(pairs[j]): str(pairs[j+1]) for j in range(0, len(pairs) - 1, 2)}
+        if not mapping_dict:
+            return s
+        sorted_keys = sorted(mapping_dict.keys(), key=len, reverse=True)
+        pattern = re.compile("|".join(re.escape(k) for k in sorted_keys))
+        return pattern.sub(lambda m: mapping_dict[m.group(0)], s)
+    else:
+        raise ValueError(f"unknown subcommand \"{subcommand}\"")
+
+def tcl_expr(expr_str: str, *args) -> float | int:
     if args:
         expr_str = " ".join([expr_str] + [str(arg) for arg in args])
-
-    tk = _get_tk()
-    if tk:
-        # Pull environment from caller frame and inject into Tcl interpreter
-        frame = inspect.currentframe().f_back
-        if frame:
-            env = frame.f_locals.copy()
-            env.update(frame.f_globals)
-            for k, v in env.items():
-                if not k.startswith('_') and isinstance(v, (int, float, str, list, tuple)):
-                    try:
-                        if isinstance(v, (list, tuple)):
-                            tk.setvar(k, " ".join(str(x) for x in v))
-                        else:
-                            tk.setvar(k, str(v))
-                    except Exception:
-                        pass
-        try:
-            res = tk.eval(f"expr {{{expr_str}}}")
-            # Coerce result back to int/float if numeric
-            if isinstance(res, str):
-                res_str = res.strip()
-                if '.' in res_str or 'e' in res_str.lower():
-                    try:
-                        return float(res_str)
-                    except ValueError:
-                        return res_str
-                try:
-                    return int(res_str)
-                except ValueError:
-                    return res_str
-            return res
-        except Exception as e:
-            # Fallback to python eval if tk expr fails
-            pass
-
-    # Python fallback using _tcl_num coercion
-    python_expr = re.sub(r'\$([a-zA-Z_][a-zA-Z0-9_]*)', r'_tcl_num(\1)', expr_str)
+    if expr_str.startswith("{") and expr_str.endswith("}"):
+        expr_str = expr_str[1:-1].strip()
+    interp = _get_tkinter_interp()
     frame = inspect.currentframe().f_back
     env = frame.f_locals.copy()
     env.update(frame.f_globals)
-    return eval(python_expr, env, env)
-
-def tcl_open(filename, mode="r"):
-    """Emulates Tcl's open command, returning a file channel handle."""
-    global _tcl_channel_counter, _tcl_channels
-    py_mode = mode
-    if py_mode.startswith("r"):
-        py_mode = "r"
-    elif py_mode.startswith("w"):
-        py_mode = "w"
-    elif py_mode.startswith("a"):
-        py_mode = "a"
-
-    f = open(filename, py_mode, encoding="utf-8", errors="ignore")
-    _tcl_channel_counter += 1
-    handle = f"file{_tcl_channel_counter}"
-    _tcl_channels[handle] = f
-    return handle
-
-def tcl_read(channel_or_path, *args):
-    """Emulates Tcl's read command for channels or direct file paths."""
-    global _tcl_channels
-    if channel_or_path in _tcl_channels:
-        return _tcl_channels[channel_or_path].read()
+    for k, v in env.items():
+        if not k.startswith('_') and not callable(v):
+            try:
+                if isinstance(v, dict):
+                    for ak, av in v.items():
+                        interp.set(f"{k}({ak})", str(av))
+                else:
+                    interp.setvar(k, str(v))
+            except Exception:
+                pass
     try:
-        with open(channel_or_path, "r", encoding="utf-8", errors="ignore") as f:
-            return f.read()
+        res = interp.eval(f"expr {{{expr_str}}}")
+        cleaned = str(res).strip()
+        if "." in cleaned or "e" in cleaned.lower():
+            return float(cleaned)
+        return int(cleaned)
     except Exception as e:
-        raise ValueError(f"Invalid file channel or path: {channel_or_path}")
+        raise ValueError(f"tcl expr evaluation error: '{expr_str}' -> {e}")
 
-def tcl_gets(channel, var_name=None):
-    """Emulates Tcl's gets command for line-by-line reading."""
-    global _tcl_channels
-    if channel in _tcl_channels:
-        f = _tcl_channels[channel]
-        line = f.readline()
-        if line == "":
-            return -1  # EOF
-        line = line.rstrip("\r\n")
-        if var_name:
-            frame = inspect.currentframe().f_back
-            env = frame.f_locals
-            if var_name not in env:
-                env = frame.f_globals
-            env[var_name] = line
-            return len(line)
-        return line
-    return -1
+def tcl_format_output(val) -> str:
+    if isinstance(val, (list, tuple)):
+        return " ".join(str(item) for item in val)
+    if isinstance(val, dict):
+        return " ".join(f"{k} {v}" for k, v in val.items())
+    if val is None:
+        return ""
+    return str(val)
 
-def tcl_close(channel):
-    """Emulates Tcl's close command."""
-    global _tcl_channels
-    if channel in _tcl_channels:
-        _tcl_channels[channel].close()
-        del _tcl_channels[channel]
-    return ""
-
-def tcl_split(string_val, split_chars=None):
-    """Emulates Tcl's split command, splitting a string by characters or whitespace."""
-    if string_val is None:
-        return []
-    s = str(string_val)
-    if split_chars is None:
-        return s.split()
-    if split_chars == "":
-        return list(s)
-    pattern = "[" + "".join(re.escape(c) for c in split_chars) + "]"
-    return re.split(pattern, s)
-
-def tcl_get_list(val):
-    """Ensure a value is returned as a Python list."""
+def tcl_get_list(val) -> list:
     if isinstance(val, (list, tuple)):
         return list(val)
+    if isinstance(val, dict):
+        res = []
+        for k, v in val.items():
+            res.extend([str(k), str(v)])
+        return res
     if val is None:
         return []
     s = str(val).strip()
@@ -146,54 +257,15 @@ def tcl_get_list(val):
         return []
     return s.split()
 
-def tcl_string(subcommand: str, *args):
-    """Emulates Tcl's string command suite (match, length, equal, etc.)."""
-    sub = subcommand.lower()
-    if sub == "match":
-        pattern = args[0] if len(args) > 0 else ""
-        val = args[1] if len(args) > 1 else ""
-        return 1 if fnmatch.fnmatch(str(val), str(pattern)) else 0
-    elif sub == "length":
-        val = args[0] if args else ""
-        return len(str(val))
-    elif sub == "equal":
-        v1 = args[0] if len(args) > 0 else ""
-        v2 = args[1] if len(args) > 1 else ""
-        return 1 if str(v1) == str(v2) else 0
-    elif sub == "tolower":
-        val = args[0] if args else ""
-        return str(val).lower()
-    elif sub == "toupper":
-        val = args[0] if args else ""
-        return str(val).upper()
-    else:
-        raise ValueError(f"Unknown string subcommand: {subcommand}")
-
-def tcl_format_output(val) -> str:
-    """Format Python objects into Tcl-native string representations."""
-    if isinstance(val, (list, tuple)):
-        return " ".join(str(item) for item in val)
-    if isinstance(val, dict):
-        items = []
-        for k, v in val.items():
-            items.extend([str(k), str(v)])
-        return " ".join(items)
-    if val is None:
-        return ""
-    return str(val)
-
 def tcl_puts(*args):
-    """Implement Tcl puts semantics, returning an empty string."""
     if not args:
         print()
         return ""
-
     if args[0] in ("stdout", "stderr"):
         args = args[1:]
         if not args:
             print()
             return ""
-
     if args[0] == "-nonewline":
         print(*(str(a) for a in args[1:]), end="")
     else:
@@ -201,38 +273,23 @@ def tcl_puts(*args):
     return ""
 
 def tcl_llength(lst) -> int:
-    """Return the number of elements in a list or space-separated string."""
-    if isinstance(lst, (list, tuple)):
-        return len(lst)
-    if lst is None:
-        return 0
-    return len(str(lst).split())
+    return len(tcl_get_list(lst))
 
 def tcl_lindex(lst, idx) -> any:
-    """Retrieve an element from a list at a specific index (forgiving out-of-bounds)."""
-    try:
-        i = int(idx)
-        if isinstance(lst, (list, tuple)):
-            return lst[i] if -len(lst) <= i < len(lst) else ""
-        tokens = str(lst).split()
-        return tokens[i] if -len(tokens) <= i < len(tokens) else ""
-    except (ValueError, IndexError):
+    items = tcl_get_list(lst)
+    i_idx = int(idx)
+    if i_idx < 0 or i_idx >= len(items):
         return ""
+    return parse_tcl_value(items[i_idx])
 
 def tcl_lappend(var_name: str, *elements) -> str:
-    """Append elements to a list variable in the active execution scope."""
     frame = inspect.currentframe().f_back
     env = frame.f_locals
     if var_name not in env:
         env = frame.f_globals
-
-    current = env.get(var_name, [])
-    if not isinstance(current, list):
-        current = list(str(current).split())
-
+    current = tcl_get_list(env.get(var_name, []))
     for el in elements:
         current.append(el)
-
     env[var_name] = current
     return tcl_format_output(current)
 
@@ -257,109 +314,55 @@ def tcl_exec(*args):
         print(f"Error executing command: {e}")
         return ""
 
-def tcl_set_array(var_name: str, *elements):
-    """Emulates Tcl's array set command, mapping key-value pairs into a Python dictionary."""
-    frame = inspect.currentframe().f_back
-    env = frame.f_locals
-    if var_name not in env:
-        env = frame.f_globals
+def tcl_split(s, sep=" "):
+    if isinstance(s, (list, tuple)):
+        s = " ".join(str(x) for x in s)
+    s_str = str(s)
+    if sep == "":
+        return list(s_str)
+    if sep == "\\n":
+        sep = "\n"
+    elif sep == "\\t":
+        sep = "\t"
+    elif sep == "\\r":
+        sep = "\r"
+    if sep is None or sep == " ":
+        return s_str.split()
+    return s_str.split(sep)
 
-    flat_list = []
-    if len(elements) == 1 and isinstance(elements[0], (list, tuple)):
-        flat_list = list(elements[0])
-    elif len(elements) == 1 and isinstance(elements[0], str):
-        flat_list = elements[0].split()
-    else:
-        flat_list = list(elements)
-
-    curr_dict = env.get(var_name, {})
-    if not isinstance(curr_dict, dict):
-        curr_dict = {}
-
-    for i in range(0, len(flat_list) - 1, 2):
-        curr_dict[str(flat_list[i])] = str(flat_list[i+1])
-
-    env[var_name] = curr_dict
-    return ""
-
-def tcl_array(subcommand: str, var_name: str, *args):
-    """Emulates Tcl's array command suite (size, exists, get, names, set)."""
-    frame = inspect.currentframe().f_back
-    env = frame.f_locals
-    if var_name not in env:
-        env = frame.f_globals
-
-    curr_dict = env.get(var_name, {})
-    if not isinstance(curr_dict, dict):
-        curr_dict = {}
-
-    sub = subcommand.lower()
-    if sub == "size":
-        return len(curr_dict)
-    elif sub == "exists":
-        return 1 if isinstance(env.get(var_name), dict) else 0
-    elif sub == "get":
-        res = []
-        for k, v in curr_dict.items():
-            res.extend([k, str(v)])
-        return res
-    elif sub == "names":
-        return list(curr_dict.keys())
-    elif sub == "set":
-        return tcl_set_array(var_name, *args)
-    else:
-        raise ValueError(f"Unknown array subcommand: {subcommand}")
-
-def _tcl_num(val):
-    """Safely convert a value to int or float if possible, otherwise return as string."""
-    if isinstance(val, (int, float)):
-        return val
-    if val is None:
-        return 0
-    s_val = str(val).strip()
-    try:
-        if '.' in s_val or 'e' in s_val.lower():
-            return float(s_val)
-        return int(s_val)
-    except ValueError:
-        return val
-
-def _print_tcl_result(val):
-    formatted = tcl_format_output(val)
-    if formatted:
-        print(formatted)
-    return ""
+def tcl_join(lst, joiner=" "):
+    items = tcl_get_list(lst)
+    return joiner.join(str(x) for x in items)
 
 def execute_tcl(source: str, env: dict) -> None:
-    """Compile and execute Tcl source code within the shared REPL environment dictionary."""
+    if source.startswith('\ufeff'):
+        source = source[1:]
+    env.setdefault("math", math)
+    env.setdefault("py_import", py_import)
     env.setdefault("expr", tcl_expr)
+    env.setdefault("_tcl_num", _tcl_num)
+    env.setdefault("tcl_set_array", tcl_set_array)
+    env.setdefault("tcl_get_array", tcl_get_array)
+    env.setdefault("tcl_array", tcl_array)
+    env.setdefault("tcl_dict", tcl_dict)
+    env.setdefault("tcl_dict_set", tcl_dict_set)
+    env.setdefault("tcl_dict_items", tcl_dict_items)
     env.setdefault("puts", tcl_puts)
+    env.setdefault("open", tcl_open)
+    env.setdefault("read", tcl_read)
+    env.setdefault("close", tcl_close)
+    env.setdefault("string", tcl_string)
     env.setdefault("llength", tcl_llength)
     env.setdefault("lindex", tcl_lindex)
     env.setdefault("lappend", tcl_lappend)
+    env.setdefault("tcl_exec", tcl_exec)   
     env.setdefault("exec", tcl_exec)
-    env.setdefault("tcl_exec", tcl_exec)
-    env.setdefault("tcl_set_array", tcl_set_array)
-    env.setdefault("tcl_array", tcl_array)
-    env.setdefault("open", tcl_open)
-    env.setdefault("tcl_open", tcl_open)
-    env.setdefault("read", tcl_read)
-    env.setdefault("tcl_read", tcl_read)
-    env.setdefault("gets", tcl_gets)
-    env.setdefault("tcl_gets", tcl_gets)
-    env.setdefault("close", tcl_close)
-    env.setdefault("tcl_close", tcl_close)
     env.setdefault("split", tcl_split)
-    env.setdefault("tcl_split", tcl_split)
+    env.setdefault("join", tcl_join)
     env.setdefault("tcl_get_list", tcl_get_list)
-    env.setdefault("string", tcl_string)
-    env.setdefault("tcl_string", tcl_string)
-    env.setdefault("_tcl_num", _tcl_num)
     env.setdefault("tcl_format_output", tcl_format_output)
-    env.setdefault("_print_tcl_result", _print_tcl_result)
-
+    
     tree = compile_tcl(source)
-
     if tree.body and isinstance(tree.body[-1], ast.Expr):
         last_expr = tree.body[-1].value
         tree.body[-1] = ast.Expr(
@@ -369,7 +372,13 @@ def execute_tcl(source: str, env: dict) -> None:
                 keywords=[]
             )
         )
-
     ast.fix_missing_locations(tree)
+    
+    def _print_tcl_result(val):
+        formatted = tcl_format_output(val)
+        if formatted != "":
+            print(formatted)
+
+    env["_print_tcl_result"] = _print_tcl_result
     code_obj = compile(tree, filename="<tclpy>", mode="exec")
-    exec(code_obj, env)
+    exec(code_obj, env, env)

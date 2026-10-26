@@ -1,51 +1,100 @@
+# src/cli.py
 import sys
 import os
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+# Ensure current working directory is in sys.path for local module imports (e.g. windows_h.py)
+current_dir = os.getcwd()
+if current_dir not in sys.path:
+    sys.path.insert(0, current_dir)
 
-from runtime import execute_tcl
+try:
+    from .runtime import execute_tcl
+except ImportError:
+    from runtime import execute_tcl
 
-def run_file(filepath):
-    if not os.path.exists(filepath):
-        print(f"Error: File '{filepath}' not found.")
-        sys.exit(1)
-    with open(filepath, 'r', encoding='utf-8') as f:
-        content = f.read()
-    env = {}
-    try:
-        execute_tcl(content, env)
-    except Exception as e:
-        print(f"Error: {e}")
+def is_balanced(source: str) -> bool:
+    """Check if Tcl braces {} and brackets [] are balanced to support multi-line input."""
+    brace_depth = 0
+    bracket_depth = 0
+    in_quote = False
+    escaped = False
+    
+    for char in source:
+        if escaped:
+            escaped = False
+            continue
+        if char == '\\':
+            escaped = True
+            continue
+        if char == '"' and not escaped:
+            in_quote = not in_quote
+            continue
+        if in_quote:
+            continue
+            
+        if char == '{':
+            brace_depth += 1
+        elif char == '}':
+            brace_depth -= 1
+        elif char == '[':
+            bracket_depth += 1
+        elif char == ']':
+            bracket_depth -= 1
+            
+    return brace_depth <= 0 and bracket_depth <= 0
 
-def main():
-    # Debug: print received arguments to verify CLI passing
-    # print(f"DEBUG sys.argv: {sys.argv}")
-
-    if len(sys.argv) > 1:
-        run_file(sys.argv[1])
-        return
-
+def run_repl():
+    """Run an interactive Tcl REPL shell with persistent environment and multi-line support."""
     print("tclpy Interactive Shell (Powered by CPython AST & Tkinter Tcl)")
-    print("Type 'exit' or 'quit' to leave the shell.")
+    print("Type 'exit' or 'quit' to leave the shell.\n")
     
     env = {}
+    buffer = []
     
     while True:
         try:
-            line = input("tclpy> ")
+            prompt = "... " if buffer else "tclpy> "
+            line = input(prompt)
         except (KeyboardInterrupt, EOFError):
-            print()
+            print("\nExiting tclpy shell. Goodbye!")
             break
             
-        if not line.strip():
+        stripped = line.strip()
+        if not buffer and stripped in ("exit", "quit"):
+            print("Goodbye!")
+            break
+            
+        if not buffer and not stripped:
             continue
-        if line.strip() in ("exit", "quit"):
-            break
             
+        buffer.append(line)
+        full_source = "\n".join(buffer)
+        
+        if is_balanced(full_source):
+            try:
+                execute_tcl(full_source, env)
+            except Exception as e:
+                print(f"Error: {e}")
+            buffer.clear()
+
+def main():
+    if len(sys.argv) > 1:
+        script_path = sys.argv[1]
+        if not os.path.exists(script_path):
+            print(f"Error: script '{script_path}' not found.", file=sys.stderr)
+            sys.exit(1)
+            
+        with open(script_path, "r", encoding="utf-8") as f:
+            source = f.read()
+            
+        env = {}
         try:
-            execute_tcl(line, env)
+            execute_tcl(source, env)
         except Exception as e:
-            print(f"Error: {e}")
+            print(f"Error: {e}", file=sys.stderr)
+            sys.exit(1)
+    else:
+        run_repl()
 
 if __name__ == "__main__":
     main()
