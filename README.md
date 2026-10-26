@@ -1,6 +1,6 @@
 ﻿# tclpy
 
-`tclpy` is a high-performance, open-source Tcl-to-Python bridge and execution engine. Instead of running a string-based interpreter, `tclpy` compiles Tcl source code directly into native CPython AST nodes (`ast.Assign`, `ast.If`, `ast.For`, `ast.Call`), delivering seamless Python interoperability while preserving Tcl's core "everything is a string" command semantics. `tclpy` was inspired by hylang 
+`tclpy` is a high-performance, open-source Tcl-to-Python bridge and execution engine. Instead of running a string-based interpreter, `tclpy` compiles Tcl source code directly into native CPython AST nodes (`ast.Assign`, `ast.If`, `ast.For`, `ast.Call`), delivering seamless Python interoperability while preserving Tcl's core "everything is a string" command semantics. `tclpy` was inspired by hylang. We want to bring the fun back to coding in TCL. 
 
 ---
 
@@ -80,6 +80,43 @@ foreach val $values {
         puts "Square root of $val is $root"
     }
 }
+
+---
+
+## Experimental Features: Lisp & Macro Integration (`hy` Bridge)
+
+This repository includes an **experimental** subsystem for embedding **Hy** (a Lisp-to-Python dialect) into the Tcl environment, providing an AST-aware macro and scripting layer for debugging operations.
+
+### The FFI & Return Marshaling Challenge
+
+When interfacing with Python through the `tclpy` bridge, the built-in `py_exec` command acts as a statement-level execution wrapper. However, it enforces strict return-type checks:
+
+* Python's top-level execution (`exec()`) and many statement outputs evaluate to `None`.
+* The C-extension bridge attempts to marshal these return values back to Tcl, resulting in an `Error: Invalid module type: <class 'NoneType'>` exception if primitives or statement outputs are returned directly to the REPL.
+
+### The Sidecar Bridge Solution (`hy_bridge.py`)
+
+To bypass REPL return filters and handle complex Python structures (such as Hy's lazy expression generators via `hy.models.Lazy`), execution logic is encapsulated in a dedicated local sidecar module (`hy_bridge.py`) rather than raw inline evaluation strings.
+
+1. **Native Import:** Load the module directly into Tcl using the namespace import mechanism:
+```tcl
+py::import hy_bridge
+
+```
+
+
+2. **Sidecar Execution:** Delegate statement evaluation and printing to the Python sidecar, keeping the FFI boundary clean:
+```tcl
+py_exec {hy_bridge.eval_print("(+ 40 2)")}
+
+```
+
+### Future Considerations & Edge Cases
+
+As we explore integrating other complex Python libraries into the Tcl/Win64 debugging workflow, any library exhibiting strict FFI boundary constraints, thread-affinity requirements, or non-standard return marshaling will follow this same pattern: **encapsulate in a dedicated local wrapper module and bind via native imports rather than raw REPL eval wrappers.**
+
+---
+
 
 tclpy/
 ├── src/

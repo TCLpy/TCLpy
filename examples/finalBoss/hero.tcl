@@ -11,11 +11,13 @@ puts "=========================================================="
 puts ""
 
 # Import our Python hero module using namespaced import
-py::import hero_logic
+# py::import hero_logic
+py::import hy
+py::import testdump
 
 puts "[*] Launching debugger workflow from Python module..."
 
 # Invoke the main loop function
-hero_logic.run_hero
+# hero_logic.run_hero
 
 puts "[*] Debugger demo session concluded successfully."
