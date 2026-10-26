@@ -602,9 +602,7 @@ def execute_tcl(source: str, env: dict) -> None:
     if source.startswith('\ufeff'):
         source = source[1:]
     env.setdefault("math", math)
-    env.setdefault("py_import", py_import)
     env.setdefault("py::import", py_import)
-    env.setdefault("py::exec", tcl_py_exec)
     env.setdefault("py_exec", tcl_py_exec)
     env.setdefault("expr", tcl_expr)
     env.setdefault("incr", tcl_incr)
