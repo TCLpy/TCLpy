@@ -26,6 +26,27 @@
 
 ---
 
+### Core Tcl string command
+### String Operations Quick Reference
+
+| Operation | Syntax Example | Description | Result |
+| :--- | :--- | :--- | :--- |
+| **length** | `string length "Hello"` | Returns the number of characters. | `5` |
+| **index** | `string index "Tcl" 1` | Retrieves the character at a 0-based index. | `c` |
+| **range** | `string range "Python" 0 2` | Extracts a substring from start to end index (inclusive). | `Pyt` |
+| **compare** | `string compare "abc" "def"` | Lexicographically compares two strings (returns -1, 0, or 1). | `-1` |
+| **equal** | `string equal -nocase "A" "a"` | Returns 1 if identical, 0 otherwise. Supports `-nocase`. | `1` |
+| **first** | `string first "bc" "abcde"` | Finds the first index of a substring; returns -1 if not found. | `1` |
+| **last** | `string last "a" "banana"` | Finds the last index of a substring. | `5` |
+| **match** | `string match "test*" "testing"` | Performs glob-style wildcard pattern matching (`*`, `?`, `[]`). | `1` |
+| **map** | `string map {a 1 b 2} "abab"` | Replaces substrings based on key-value pairs. | `1212` |
+| **replace** | `string replace "I like Java" 7 10 "Tcl"` | Replaces a range of characters with a new string. | `"I like Tcl"` |
+| **tolower** | `string tolower "HELLO"` | Converts string to lowercase. | `"hello"` |
+| **toupper** | `string toupper "hello"` | Converts string to uppercase. | `"HELLO"` |
+| **trim** | `string trim "  abc  "` | Strips leading/trailing whitespaces or specified characters. | `"abc"` |
+| **is** | `string is integer -strict "123"` | Validates character classes (e.g., digit, alpha, boolean). | `1` |
+
+---
 ## Installation & Setup
 
 Clone the repository and run locally:
