@@ -8,6 +8,8 @@ import subprocess
 import fnmatch
 import tkinter
 import socket as py_socket
+import threading
+
 
 
 try:
@@ -42,6 +44,16 @@ def _tcl_num(val):
         return int(cleaned)
     except ValueError:
         return val
+
+def tcl_incr(var_name: str, increment: any = 1) -> int:
+    frame = inspect.currentframe().f_back
+    env = frame.f_locals
+    if var_name not in env:
+        env = frame.f_globals
+    val = _tcl_num(env.get(var_name, 0))
+    new_val = val + _tcl_num(increment)
+    env[var_name] = new_val
+    return new_val
 
 def parse_tcl_value(val):
     return _tcl_num(val)
@@ -177,8 +189,6 @@ def tcl_close(chan_id: str) -> str:
         return ""
     raise ValueError(f"can not find channel named \"{chan_id}\"")
 
-
-import threading
 
 # Add a registry for server environments
 _server_envs = {}
@@ -359,33 +369,56 @@ def tcl_string(subcommand: str, *args) -> any:
         raise ValueError(f"unknown subcommand \"{subcommand}\"")
 
 
+
 def tcl_expr(expr_str: any, *args) -> float | int:
     all_parts = [expr_str] + list(args)
     expr_str = " ".join(str(arg) for arg in all_parts)
     if expr_str.startswith("{") and expr_str.endswith("}"):
         expr_str = expr_str[1:-1].strip()
-    interp = _get_tkinter_interp()
+        
     frame = inspect.currentframe().f_back
     env = frame.f_locals.copy()
-    env.update(frame.f_globals)
-    for k, v in env.items():
-        if not k.startswith('_') and not callable(v):
-            try:
-                if isinstance(v, dict):
-                    for ak, av in v.items():
-                        interp.set(f"{k}({ak})", str(av))
-                else:
-                    interp.setvar(k, str(v))
-            except Exception:
-                pass
+    if frame and hasattr(frame, 'f_globals'):
+        env.update(frame.f_globals)
+
+    # Clean up tcl variables like $c into Python variable names
+    py_expr = re.sub(r'\$([a-zA-Z_][a-zA-Z0-9_]*)', r'\1', expr_str)
+
+    # Try pure Python evaluation
     try:
+        res = eval(py_expr, {"__builtins__": {}}, env)
+        if isinstance(res, (int, float)):
+            return res
+    except Exception:
+        pass
+
+    # If running on the main thread, safe to use Tkinter interp as secondary fallback
+    try:
+        interp = _get_tkinter_interp()
+        for k, v in env.items():
+            if not k.startswith('_') and not callable(v):
+                try:
+                    if isinstance(v, dict):
+                        for ak, av in v.items():
+                            interp.set(f"{k}({ak})", str(av))
+                    else:
+                        interp.setvar(k, str(v))
+                except Exception:
+                    pass
         res = interp.eval(f"expr {{{expr_str}}}")
         cleaned = str(res).strip()
         if "." in cleaned or "e" in cleaned.lower():
             return float(cleaned)
         return int(cleaned)
     except Exception as e:
-        raise ValueError(f"tcl expr evaluation error: '{expr_str}' -> {e}")
+        # If Tkinter fails due to thread apartment, try a basic fallback parser
+        try:
+            # Last resort simple math parser using Python eval on cleaned expression
+            res = eval(py_expr, {"__builtins__": {}}, env)
+            return res
+        except Exception:
+            raise ValueError(f"tcl expr evaluation error: '{expr_str}' -> {e}")
+
 
 def tcl_format_output(val) -> str:
     if isinstance(val, (list, tuple)):
@@ -526,12 +559,55 @@ def tcl_join(lst, joiner=" "):
     items = tcl_get_list(lst)
     return joiner.join(str(x) for x in items)
 
+def tcl_global(*var_names):
+    frame = inspect.currentframe().f_back
+    if not frame:
+        return ""
+    local_env = frame.f_locals
+    global_env = frame.f_globals
+    for name in var_names:
+        str_name = str(name)
+        if str_name in global_env:
+            local_env[str_name] = global_env[str_name]
+        else:
+            global_env[str_name] = local_env.get(str_name, "")
+    return ""
+
+
+import textwrap
+
+def tcl_py_exec(code_str: str) -> any:
+    frame = inspect.currentframe().f_back
+    env = frame.f_locals.copy()
+    if frame and hasattr(frame, 'f_globals'):
+        env.update(frame.f_globals)
+    
+    if code_str.startswith("{") and code_str.endswith("}"):
+        code_str = code_str[1:-1].strip()
+        
+    # Dedent to remove leading shell continuation spaces
+    code_str = textwrap.dedent(code_str)
+        
+    compiled = compile(code_str, "<py_exec>", "exec")
+    exec(compiled, env, env)
+    
+    if frame and hasattr(frame, 'f_locals'):
+        for k, v in env.items():
+            if not k.startswith('_'):
+                frame.f_locals[k] = v
+    return ""
+
+
 def execute_tcl(source: str, env: dict) -> None:
     if source.startswith('\ufeff'):
         source = source[1:]
     env.setdefault("math", math)
     env.setdefault("py_import", py_import)
+    env.setdefault("py::import", py_import)
+    env.setdefault("py::exec", tcl_py_exec)
+    env.setdefault("py_exec", tcl_py_exec)
     env.setdefault("expr", tcl_expr)
+    env.setdefault("incr", tcl_incr)
     env.setdefault("_tcl_num", _tcl_num)
     env.setdefault("tcl_set_array", tcl_set_array)
     env.setdefault("tcl_get_array", tcl_get_array)
@@ -550,10 +626,11 @@ def execute_tcl(source: str, env: dict) -> None:
     env.setdefault("llength", tcl_llength)
     env.setdefault("lindex", tcl_lindex)
     env.setdefault("lappend", tcl_lappend)
-    env.setdefault("tcl_exec", tcl_exec)   
+    env.setdefault("tcl_exec", tcl_exec)  
     env.setdefault("exec", tcl_exec)
     env.setdefault("split", tcl_split)
     env.setdefault("join", tcl_join)
+    env.setdefault("global", tcl_global)
     env.setdefault("tcl_get_list", tcl_get_list)
     env.setdefault("tcl_format_output", tcl_format_output)
     
