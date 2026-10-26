@@ -7,6 +7,8 @@ import inspect
 import subprocess
 import fnmatch
 import tkinter
+import socket as py_socket
+
 
 try:
     from .compiler import compile_tcl, compile_tcl_expr
@@ -175,6 +177,78 @@ def tcl_close(chan_id: str) -> str:
         return ""
     raise ValueError(f"can not find channel named \"{chan_id}\"")
 
+
+import threading
+
+# Add a registry for server environments
+_server_envs = {}
+
+def tcl_socket(*args) -> str:
+    global _channel_counter
+    if len(args) >= 3 and args[0] == "-server":
+        callback_name = str(args[1])
+        port = int(args[2])
+        
+        # Capture the caller's environment (locals and globals)
+        frame = inspect.currentframe().f_back
+        captured_env = frame.f_locals.copy() if frame else {}
+        if frame and hasattr(frame, 'f_globals'):
+            captured_env.update(frame.f_globals)
+        
+        s = py_socket.socket(py_socket.AF_INET, py_socket.SOCK_STREAM)
+        s.setsockopt(py_socket.SOL_SOCKET, py_socket.SO_REUSEADDR, 1)
+        s.bind(('', port))
+        s.listen(5)
+        
+        _channel_counter += 1
+        chan_id = f"sock{_channel_counter}"
+        _open_channels[chan_id] = s
+        _server_envs[chan_id] = captured_env
+        
+        # Background listener thread
+        def accept_loop():
+            while True:
+                try:
+                    conn, addr = s.accept()
+                    f_text = conn.makefile('rw', encoding='utf-8')
+                    global _channel_counter
+                    _channel_counter += 1
+                    client_chan = f"sock{_channel_counter}"
+                    _open_channels[client_chan] = f_text
+                    
+                    # Evaluate the callback procedure using the captured server environment
+                    if callback_name:
+                        try:
+                            cmd_str = f"{callback_name} {client_chan}"
+                            tree = compile_tcl(cmd_str)
+                            ast.fix_missing_locations(tree)
+                            code_obj = compile(tree, filename="<tcl_socket_callback>", mode="exec")
+                            exec(code_obj, captured_env, captured_env)
+                        except Exception as cb_err:
+                            print(f"Error in socket server callback: {cb_err}")
+                except Exception:
+                    break
+                    
+        t = threading.Thread(target=accept_loop, daemon=True)
+        t.start()
+        return chan_id
+    elif len(args) == 2:
+        host, port = str(args[0]), int(args[1])
+        s = py_socket.socket(py_socket.AF_INET, py_socket.SOCK_STREAM)
+        s.connect((host, port))
+        f_text = s.makefile('rw', encoding='utf-8')
+        _channel_counter += 1
+        chan_id = f"sock{_channel_counter}"
+        _open_channels[chan_id] = f_text
+        return chan_id
+    else:
+        raise ValueError("wrong # args: should be 'socket host port' or 'socket -server command port'")
+
+def tcl_flush(chan_id: str) -> str:
+    if chan_id in _open_channels:
+        _open_channels[chan_id].flush()
+        return ""
+    raise ValueError(f"can not find channel named \"{chan_id}\"")
 
 def tcl_string(subcommand: str, *args) -> any:
     if subcommand == "length":
@@ -470,6 +544,8 @@ def execute_tcl(source: str, env: dict) -> None:
     env.setdefault("open", tcl_open)
     env.setdefault("read", tcl_read)
     env.setdefault("close", tcl_close)
+    env.setdefault("socket", tcl_socket)
+    env.setdefault("flush", tcl_flush)
     env.setdefault("string", tcl_string)
     env.setdefault("llength", tcl_llength)
     env.setdefault("lindex", tcl_lindex)
