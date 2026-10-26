@@ -28,8 +28,9 @@
 | **Procedures & Logic** | `proc`, `return`, `expr` |
 | **Collections** | `llength`, `lindex`, `lappend` |
 | **I/O & Output** | `puts`, `read`, `gets`, `open`, and `close`, `socket`, `flush` |
-| **Python Bridge** | `py::import` |
-
+| **Python Bridge** 
+    | `py::import`| use to access python's libraries to tap python's ecosystem 
+    | `py::exec`| | use to run python inline code 
 ---
 
 ### Core Tcl string command
