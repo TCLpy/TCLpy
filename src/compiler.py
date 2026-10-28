@@ -57,7 +57,24 @@ def compile_tcl_quoted(quoted_str: str) -> ast.AST:
         return ast.Constant(value=quoted_str)
 
 def parse_tcl_arg_node(arg_type: str, arg_val: str) -> ast.AST:
-    """Convert a token into the appropriate AST node for function calls/commands, supporting Python constants and dotted attributes."""
+    """Convert a token into the appropriate AST node for function calls/commands, supporting Python constants, dotted attributes, and * unpacking."""
+    # Handle starred unpacking for tuples/lists (e.g., *$rect_coords)
+    if arg_val.startswith("*"):
+        unpacked_expr = arg_val[1:]
+        if unpacked_expr.startswith("$"):
+            var_name = unpacked_expr[1:].replace("-", "_")
+            inner_node = ast.Name(id=var_name, ctx=ast.Load())
+        else:
+            lit = parse_tcl_literal(unpacked_expr)
+            if isinstance(lit, str) and "." in lit and not lit.replace(".", "", 1).isdigit():
+                parts = lit.split(".")
+                inner_node = ast.Name(id=parts[0].replace("-", "_"), ctx=ast.Load())
+                for p in parts[1:]:
+                    inner_node = ast.Attribute(value=inner_node, attr=p.replace("-", "_"), ctx=ast.Load())
+            else:
+                inner_node = ast.Constant(value=lit)
+        return ast.Starred(value=inner_node, ctx=ast.Load())
+
     if arg_type == "VAR":
         py_var = arg_val.replace("-", "_")
         return ast.Name(id=py_var, ctx=ast.Load())
@@ -71,7 +88,6 @@ def parse_tcl_arg_node(arg_type: str, arg_val: str) -> ast.AST:
             return sub_tree.body[-1].value
         return ast.Constant(value="")
     else:
-        # Handle native Python constants in unquoted words
         if arg_val == "None":
             return ast.Constant(value=None)
         if arg_val == "True":
@@ -418,7 +434,9 @@ def compile_tcl(source: str) -> ast.Module:
                     if i < len(tokens):
                         body_type, body_val = tokens[i]
                         iter_target = ast.Name(id=var_name, ctx=ast.Store())
-                        iter_source = ast.Name(id=list_val.replace("-", "_"), ctx=ast.Load()) if list_type == "VAR" else ast.Constant(value=parse_tcl_literal(list_val))
+                        
+                        # Use parse_tcl_arg_node so [pygame.event.get] compiles to a real function call AST node!
+                        iter_source = parse_tcl_arg_node(list_type, list_val)
                         
                         loop_body_tree = compile_tcl(body_val)
                         loop_body = loop_body_tree.body if loop_body_tree.body else [ast.Pass()]
@@ -433,7 +451,6 @@ def compile_tcl(source: str) -> ast.Module:
                             body=loop_body,
                             orelse=[]
                         ))
-
         elif t_type == "WORD" and t_val == "if":
             i += 1
             if i < len(tokens):
@@ -557,6 +574,45 @@ def compile_tcl(source: str) -> ast.Module:
                     )
                 ))
             i -= 1
+        
+        elif t_type in ("WORD", "VAR"):
+            # If it starts with a variable token or a word, let's capture the full command target
+            cmd_raw = t_val
+            i += 1
+            
+            # Check if subsequent tokens form a dotted chain (e.g. screen . fill -> handled via token stream or dot parsing)
+            # Or if cmd_raw itself contains a dot or represents an object method call
+            if t_type == "VAR":
+                func_node = ast.Name(id=cmd_raw.replace("-", "_"), ctx=ast.Load())
+            else:
+                cmd_name = cmd_raw.replace("::", ".")
+                if "." in cmd_name:
+                    parts = cmd_name.split(".")
+                    func_node = ast.Name(id=parts[0].replace("-", "_"), ctx=ast.Load())
+                    for part in parts[1:]:
+                        func_node = ast.Attribute(value=func_node, attr=part.replace("-", "_"), ctx=ast.Load())
+                else:
+                    func_node = ast.Name(id=cmd_name, ctx=ast.Load())
+
+            # If the next token immediately follows with a dot method (e.g. object method call style), handle it
+            if i < len(tokens) and tokens[i][1].startswith("."):
+                method_part = tokens[i][1][1:] # strip leading dot
+                func_node = ast.Attribute(value=func_node, attr=method_part.replace("-", "_"), ctx=ast.Load())
+                i += 1
+
+            args = []
+            while i < len(tokens) and tokens[i][0] != "NEWLINE":
+                arg_type, arg_val = tokens[i]
+                args.append(parse_tcl_arg_node(arg_type, arg_val))
+                i += 1
+
+            body.append(ast.Expr(
+                value=ast.Call(
+                    func=func_node,
+                    args=args,
+                    keywords=[]
+                )
+            ))
 
         elif t_type == "WORD":
             cmd_name = t_val.replace("::", ".")
@@ -584,5 +640,6 @@ def compile_tcl(source: str) -> ast.Module:
             ))
             
         i += 1
+
         
     return ast.Module(body=body, type_ignores=[])

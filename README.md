@@ -128,6 +128,5 @@ tclpy/
 ├── setup.py           # Pip installation configuration
 └── README.md          # Project documentation
 
-License
 
 MIT License

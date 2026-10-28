@@ -45,6 +45,21 @@ def _tcl_num(val):
     except ValueError:
         return val
 
+def tcl_tuple(*args) -> tuple:
+    """Convert Tcl arguments or list structures into a native Python tuple."""
+    if not args:
+        return ()
+    if len(args) == 1:
+        val = args[0]
+        if isinstance(val, (list, tuple)):
+            return tuple(val)
+        if isinstance(val, str):
+            # If it's a space-separated string list, split and convert elements
+            items = tcl_get_list(val)
+            return tuple(items)
+        return (val,)
+    return tuple(tcl_get_list(arg) if isinstance(arg, (list, str)) else arg for arg in args)
+
 def tcl_incr(var_name: str, increment: any = 1) -> int:
     frame = inspect.currentframe().f_back
     env = frame.f_locals
@@ -608,6 +623,7 @@ def execute_tcl(source: str, env: dict) -> None:
     env.setdefault("expr", tcl_expr)
     env.setdefault("incr", tcl_incr)
     env.setdefault("_tcl_num", _tcl_num)
+    env.setdefault("tcl_tuple", tcl_tuple)
     env.setdefault("tcl_set_array", tcl_set_array)
     env.setdefault("tcl_get_array", tcl_get_array)
     env.setdefault("tcl_array", tcl_array)
