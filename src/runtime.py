@@ -574,6 +574,9 @@ def tcl_join(lst, joiner=" "):
     items = tcl_get_list(lst)
     return joiner.join(str(x) for x in items)
 
+def tcl_py_list(*args):
+    return list(args)
+
 def tcl_global(*var_names):
     frame = inspect.currentframe().f_back
     if not frame:
@@ -612,6 +615,24 @@ def tcl_py_exec(code_str: str) -> any:
                 frame.f_locals[k] = v
     return ""
 
+def tcl_py_eval(code_str: str) -> any:
+    frame = inspect.currentframe().f_back
+    env = frame.f_locals.copy()
+    if frame and hasattr(frame, 'f_globals'):
+        env.update(frame.f_globals)
+    
+    if code_str.startswith("{") and code_str.endswith("}"):
+        code_str = code_str[1:-1].strip()
+        
+    code_str = textwrap.dedent(code_str)
+    return eval(code_str, env, env)
+
+def tcl_py_call(obj, method_name: str, *args):
+    """Explicitly invoke a method on a Python object."""
+    method = getattr(obj, method_name)
+    # Convert any Tcl list/tuple arguments if necessary, or pass directly
+    return method(*args)
+
 
 def execute_tcl(source: str, env: dict) -> None:
     if source.startswith('\ufeff'):
@@ -620,6 +641,7 @@ def execute_tcl(source: str, env: dict) -> None:
     env.setdefault("py_import", py_import)
     env.setdefault("py::import", py_import)
     env.setdefault("py_exec", tcl_py_exec)
+    env.setdefault("py_eval", tcl_py_eval)
     env.setdefault("expr", tcl_expr)
     env.setdefault("incr", tcl_incr)
     env.setdefault("_tcl_num", _tcl_num)
@@ -645,6 +667,8 @@ def execute_tcl(source: str, env: dict) -> None:
     env.setdefault("exec", tcl_exec)
     env.setdefault("split", tcl_split)
     env.setdefault("join", tcl_join)
+    env.setdefault("list", tcl_py_list)
+    env.setdefault("py_call", tcl_py_call)
     env.setdefault("global", tcl_global)
     env.setdefault("tcl_get_list", tcl_get_list)
     env.setdefault("tcl_format_output", tcl_format_output)
@@ -660,6 +684,7 @@ def execute_tcl(source: str, env: dict) -> None:
             )
         )
     ast.fix_missing_locations(tree)
+    
     
     def _print_tcl_result(val):
         formatted = tcl_format_output(val)

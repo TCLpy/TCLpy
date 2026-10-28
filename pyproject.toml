@@ -1,13 +1,30 @@
 ﻿[build-system]
-requires = ["setuptools>=61.0"]
+requires = ["setuptools>=61.0.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "tclpy"
 version = "0.1.0"
-description = "A lightweight Tcl-to-Python AST bridge."
-requires-python = ">=3.8"
-dependencies = []
+description = "A zero-dependency, CPython-AST-powered Tcl environment with Python FFI and macro bridges"
+readme = "README.md"
+requires-python = ">=3.10"
+authors = [
+    { name = "Erider" }
+]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+]
+dependencies = [
+    # Core engine is zero-dependency Python stdlib + CPython AST
+]
 
-[project.scripts]
-tclpy = "src.repl:start_repl"
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "pyinstaller>=5.0.0",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]

@@ -8,9 +8,15 @@ if current_dir not in sys.path:
     sys.path.insert(0, current_dir)
 
 try:
-    from .runtime import execute_tcl
+    # When running as part of the installed tclpy package or PyInstaller bundle
+    from tclpy.runtime import execute_tcl
 except ImportError:
-    from runtime import execute_tcl
+    try:
+        # Relative import fallback if running inside package context
+        from .runtime import execute_tcl
+    except ImportError:
+        # Fallback for direct local script execution
+        from runtime import execute_tcl
 
 def is_balanced(source: str) -> bool:
     """Check if Tcl braces {} and brackets [] are balanced to support multi-line input."""
@@ -84,6 +90,11 @@ def main():
             print(f"Error: script '{script_path}' not found.", file=sys.stderr)
             sys.exit(1)
             
+        # Add the script's own directory to sys.path so local modules (e.g. testdump) resolve
+        script_dir = os.path.abspath(os.path.dirname(script_path))
+        if script_dir not in sys.path:
+            sys.path.insert(0, script_dir)
+            
         with open(script_path, "r", encoding="utf-8") as f:
             source = f.read()
             
@@ -95,6 +106,6 @@ def main():
             sys.exit(1)
     else:
         run_repl()
-
+        
 if __name__ == "__main__":
     main()

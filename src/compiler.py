@@ -360,6 +360,23 @@ def compile_tcl(source: str) -> ast.Module:
             ))
             i -= 1
 
+        elif t_type == "WORD" and t_val in ("py_call", "py_exec", "py_eval"):
+            cmd_name = t_val
+            i += 1
+            args = []
+            while i < len(tokens) and tokens[i][0] != "NEWLINE":
+                arg_type, arg_val = tokens[i]
+                args.append(parse_tcl_arg_node(arg_type, arg_val))
+                i += 1
+            body.append(ast.Expr(
+                value=ast.Call(
+                    func=ast.Name(id=cmd_name, ctx=ast.Load()),
+                    args=args,
+                    keywords=[]
+                )
+            ))
+            i -= 1
+
         elif t_type == "WORD" and t_val == "subst":
             i += 1
             args = []
@@ -434,10 +451,7 @@ def compile_tcl(source: str) -> ast.Module:
                     if i < len(tokens):
                         body_type, body_val = tokens[i]
                         iter_target = ast.Name(id=var_name, ctx=ast.Store())
-                        
-                        # Use parse_tcl_arg_node so [pygame.event.get] compiles to a real function call AST node!
                         iter_source = parse_tcl_arg_node(list_type, list_val)
-                        
                         loop_body_tree = compile_tcl(body_val)
                         loop_body = loop_body_tree.body if loop_body_tree.body else [ast.Pass()]
                         
@@ -451,6 +465,7 @@ def compile_tcl(source: str) -> ast.Module:
                             body=loop_body,
                             orelse=[]
                         ))
+
         elif t_type == "WORD" and t_val == "if":
             i += 1
             if i < len(tokens):
@@ -548,40 +563,9 @@ def compile_tcl(source: str) -> ast.Module:
                     )
                 ))
 
-        elif t_type == "VAR":
-            py_var = t_val.replace("-", "_")
-            i += 1
-            if i < len(tokens) and tokens[i][0] != "NEWLINE":
-                method_type, method_val = tokens[i]
-                method_name = method_val
-                i += 1
-                args = []
-                while i < len(tokens) and tokens[i][0] != "NEWLINE":
-                    arg_type, arg_val = tokens[i]
-                    args.append(parse_tcl_arg_node(arg_type, arg_val))
-                    i += 1
-                
-                func_node = ast.Attribute(
-                    value=ast.Name(id=py_var, ctx=ast.Load()),
-                    attr=method_name,
-                    ctx=ast.Load()
-                )
-                body.append(ast.Expr(
-                    value=ast.Call(
-                        func=func_node,
-                        args=args,
-                        keywords=[]
-                    )
-                ))
-            i -= 1
-        
         elif t_type in ("WORD", "VAR"):
-            # If it starts with a variable token or a word, let's capture the full command target
             cmd_raw = t_val
             i += 1
-            
-            # Check if subsequent tokens form a dotted chain (e.g. screen . fill -> handled via token stream or dot parsing)
-            # Or if cmd_raw itself contains a dot or represents an object method call
             if t_type == "VAR":
                 func_node = ast.Name(id=cmd_raw.replace("-", "_"), ctx=ast.Load())
             else:
@@ -594,9 +578,8 @@ def compile_tcl(source: str) -> ast.Module:
                 else:
                     func_node = ast.Name(id=cmd_name, ctx=ast.Load())
 
-            # If the next token immediately follows with a dot method (e.g. object method call style), handle it
             if i < len(tokens) and tokens[i][1].startswith("."):
-                method_part = tokens[i][1][1:] # strip leading dot
+                method_part = tokens[i][1][1:]
                 func_node = ast.Attribute(value=func_node, attr=method_part.replace("-", "_"), ctx=ast.Load())
                 i += 1
 
@@ -614,32 +597,6 @@ def compile_tcl(source: str) -> ast.Module:
                 )
             ))
 
-        elif t_type == "WORD":
-            cmd_name = t_val.replace("::", ".")
-            i += 1
-            args = []
-            while i < len(tokens) and tokens[i][0] != "NEWLINE":
-                arg_type, arg_val = tokens[i]
-                args.append(parse_tcl_arg_node(arg_type, arg_val))
-                i += 1
-            
-            if "." in cmd_name:
-                parts = cmd_name.split(".")
-                func_node = ast.Name(id=parts[0].replace("-", "_"), ctx=ast.Load())
-                for part in parts[1:]:
-                    func_node = ast.Attribute(value=func_node, attr=part.replace("-", "_"), ctx=ast.Load())
-            else:
-                func_node = ast.Name(id=cmd_name, ctx=ast.Load())
-
-            body.append(ast.Expr(
-                value=ast.Call(
-                    func=func_node,
-                    args=args,
-                    keywords=[]
-                )
-            ))
-            
         i += 1
-
         
     return ast.Module(body=body, type_ignores=[])
