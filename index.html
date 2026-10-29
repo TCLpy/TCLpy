@@ -32,6 +32,15 @@
             text-align: center;
             margin-bottom: 3rem;
         }
+        header img {
+            width: 140px;
+            height: 140px;
+            border-radius: 50%;
+            object-fit: cover;
+            margin-bottom: 1rem;
+            border: 2px solid var(--accent);
+            box-shadow: 0 0 20px var(--accent-glow);
+        }
         h1 {
             font-size: 3rem;
             margin-bottom: 0.5rem;
@@ -111,6 +120,7 @@
 <body>
     <div class="container">
         <header>
+            <img src="assets/LogoTCLpy.jpg" alt="TCLpy Logo">
             <h1>TCLpy 🚀</h1>
             <p class="tagline">A Lightweight, Zero-Dependency Tcl-to-Python Compiler & FFI Bridge</p>
             <div class="btn-group">

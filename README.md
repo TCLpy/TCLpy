@@ -1,4 +1,9 @@
-﻿# TCLpy 🚀
+﻿<p align="center">
+  <img src="assets/LogoTCLpy.jpg" alt="TCLpy Astrolabe Snake Logo" width="220" style="border-radius: 12px;">
+</p>
+
+# TCLpy 🚀
+
 
 **A Lightweight, Zero-Dependency Tcl-to-Python Compiler & FFI Bridge**
 
