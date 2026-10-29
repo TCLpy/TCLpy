@@ -27,8 +27,19 @@ def _get_tkinter_interp():
         _tkinter_interp = tkinter.Tcl()
     return _tkinter_interp
 
+
 def py_import(mod_name: str):
     return importlib.import_module(mod_name)
+
+
+def tcl_py_lookup(base_obj, *path_parts):
+    """Recursively fetch nested attributes or submodules functionally."""
+    curr = base_obj
+    for part in path_parts:
+        py_name = str(part).replace("-", "_")
+        curr = getattr(curr, py_name)
+    return curr
+
 
 def _tcl_num(val):
     if isinstance(val, (int, float)):
@@ -577,6 +588,11 @@ def tcl_join(lst, joiner=" "):
 def tcl_py_list(*args):
     return list(args)
 
+def tcl_getattr(obj, attr_name: str):
+    """Safely fetch an attribute from a Python object functionally."""
+    return getattr(obj, str(attr_name).replace("-", "_"))
+
+
 def tcl_global(*var_names):
     frame = inspect.currentframe().f_back
     if not frame:
@@ -640,6 +656,7 @@ def execute_tcl(source: str, env: dict) -> None:
     env.setdefault("math", math)
     env.setdefault("py_import", py_import)
     env.setdefault("py::import", py_import)
+    env.setdefault("tcl_py_lookup", tcl_py_lookup)
     env.setdefault("py_exec", tcl_py_exec)
     env.setdefault("py_eval", tcl_py_eval)
     env.setdefault("expr", tcl_expr)
@@ -672,6 +689,7 @@ def execute_tcl(source: str, env: dict) -> None:
     env.setdefault("global", tcl_global)
     env.setdefault("tcl_get_list", tcl_get_list)
     env.setdefault("tcl_format_output", tcl_format_output)
+    env.setdefault("tcl_getattr", tcl_getattr)
     
     tree = compile_tcl(source)
     if tree.body and isinstance(tree.body[-1], ast.Expr):

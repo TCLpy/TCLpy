@@ -570,11 +570,15 @@ def compile_tcl(source: str) -> ast.Module:
                 func_node = ast.Name(id=cmd_raw.replace("-", "_"), ctx=ast.Load())
             else:
                 cmd_name = cmd_raw.replace("::", ".")
-                if "." in cmd_name:
-                    parts = cmd_name.split(".")
-                    func_node = ast.Name(id=parts[0].replace("-", "_"), ctx=ast.Load())
-                    for part in parts[1:]:
-                        func_node = ast.Attribute(value=func_node, attr=part.replace("-", "_"), ctx=ast.Load())
+                parts = re.split(r'::|\.', cmd_name)
+                if len(parts) > 1:
+                    base_node = ast.Name(id=parts[0].replace("-", "_"), ctx=ast.Load())
+                    path_consts = [ast.Constant(value=p.replace("-", "_")) for p in parts[1:]]
+                    func_node = ast.Call(
+                        func=ast.Name(id="tcl_py_lookup", ctx=ast.Load()),
+                        args=[base_node] + path_consts,
+                        keywords=[]
+                    )
                 else:
                     func_node = ast.Name(id=cmd_name, ctx=ast.Load())
 
