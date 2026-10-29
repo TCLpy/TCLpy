@@ -255,7 +255,7 @@ def tcl_socket(*args) -> str:
                     # Evaluate the callback procedure using the captured server environment
                     if callback_name:
                         try:
-                            cmd_str = f"{callback_name} {client_chan}"
+                            cmd_str = f'{callback_name} {client_chan} "{addr[0]}" {addr[1]}'
                             tree = compile_tcl(cmd_str)
                             ast.fix_missing_locations(tree)
                             code_obj = compile(tree, filename="<tcl_socket_callback>", mode="exec")
