@@ -57,23 +57,21 @@ def compile_tcl_quoted(quoted_str: str) -> ast.AST:
         return ast.Constant(value=quoted_str)
 
 def parse_tcl_arg_node(arg_type: str, arg_val: str) -> ast.AST:
-    """Convert a token into the appropriate AST node for function calls/commands, supporting Python constants, dotted attributes, and * unpacking."""
-    # Handle starred unpacking for tuples/lists (e.g., *$rect_coords)
-    if arg_val.startswith("*"):
-        unpacked_expr = arg_val[1:]
-        if unpacked_expr.startswith("$"):
-            var_name = unpacked_expr[1:].replace("-", "_")
-            inner_node = ast.Name(id=var_name, ctx=ast.Load())
+    """Convert a token into the appropriate AST node, handling array lookups and variables."""
+    # Check if the argument itself is an array reference like count($word) or count(key)
+    arr_match = re.match(r'^([a-zA-Z_][a-zA-Z0-9_-]*)\((.+)\)$', arg_val)
+    if arr_match:
+        arr_name = arr_match.group(1).replace("-", "_")
+        key_expr = arr_match.group(2).strip()
+        if key_expr.startswith("$"):
+            key_node = ast.Name(id=key_expr[1:].replace("-", "_"), ctx=ast.Load())
         else:
-            lit = parse_tcl_literal(unpacked_expr)
-            if isinstance(lit, str) and "." in lit and not lit.replace(".", "", 1).isdigit():
-                parts = lit.split(".")
-                inner_node = ast.Name(id=parts[0].replace("-", "_"), ctx=ast.Load())
-                for p in parts[1:]:
-                    inner_node = ast.Attribute(value=inner_node, attr=p.replace("-", "_"), ctx=ast.Load())
-            else:
-                inner_node = ast.Constant(value=lit)
-        return ast.Starred(value=inner_node, ctx=ast.Load())
+            key_node = ast.Constant(value=key_expr)
+        return ast.Call(
+            func=ast.Name(id="tcl_get_array", ctx=ast.Load()),
+            args=[ast.Constant(value=arr_name), key_node],
+            keywords=[]
+        )
 
     if arg_type == "VAR":
         py_var = arg_val.replace("-", "_")
@@ -376,6 +374,7 @@ def compile_tcl(source: str) -> ast.Module:
                 )
             ))
             i -= 1
+        
 
         elif t_type == "WORD" and t_val == "subst":
             i += 1
@@ -396,21 +395,44 @@ def compile_tcl(source: str) -> ast.Module:
         elif t_type == "WORD" and t_val == "incr":
             i += 1
             if i < len(tokens):
-                var_name = tokens[i][1].replace("-", "_")
+                var_raw = tokens[i][1]
                 i += 1
                 increment = 1
                 if i < len(tokens) and tokens[i][0] != "NEWLINE":
-                    increment = int(tokens[i][1])
-                    i += 1
+                    try:
+                        increment = int(tokens[i][1])
+                        i += 1
+                    except ValueError:
+                        increment = 1
                 
-                body.append(ast.Assign(
-                    targets=[ast.Name(id=var_name, ctx=ast.Store())],
-                    value=ast.BinOp(
-                        left=ast.Name(id=var_name, ctx=ast.Load()),
-                        op=ast.Add(),
-                        right=ast.Constant(value=increment)
-                    )
-                ))
+                # Automatically map array syntax like count($word) to tcl_incr_array behind the scenes
+                arr_match = re.match(r'^([a-zA-Z_][a-zA-Z0-9_-]*)\(([a-zA-Z0-9_#-]+|\$[a-zA-Z_][a-zA-Z0-9_-]*)\)$', var_raw)
+                if arr_match:
+                    arr_name = arr_match.group(1).replace("-", "_")
+                    key_expr = arr_match.group(2)
+                    if key_expr.startswith("$"):
+                        py_key = key_expr[1:].replace("-", "_")
+                        key_node = ast.Name(id=py_key, ctx=ast.Load())
+                    else:
+                        key_node = ast.Constant(value=key_expr)
+                        
+                    body.append(ast.Expr(
+                        value=ast.Call(
+                            func=ast.Name(id="tcl_incr_array", ctx=ast.Load()),
+                            args=[ast.Constant(value=arr_name), key_node, ast.Constant(value=increment)],
+                            keywords=[]
+                        )
+                    ))
+                else:
+                    var_name = var_raw.replace("-", "_")
+                    body.append(ast.Assign(
+                        targets=[ast.Name(id=var_name, ctx=ast.Store())],
+                        value=ast.BinOp(
+                            left=ast.Name(id=var_name, ctx=ast.Load()),
+                            op=ast.Add(),
+                            right=ast.Constant(value=increment)
+                        )
+                    ))
             i -= 1
 
         elif t_type == "WORD" and t_val == "continue":
@@ -465,6 +487,40 @@ def compile_tcl(source: str) -> ast.Module:
                             body=loop_body,
                             orelse=[]
                         ))
+        
+        elif t_type == "WORD" and t_val == "for":
+            i += 1
+            if i < len(tokens):
+                init_val = tokens[i][1]
+                i += 1
+                if i < len(tokens):
+                    test_val = tokens[i][1]
+                    i += 1
+                    if i < len(tokens):
+                        next_val = tokens[i][1]
+                        i += 1
+                        if i < len(tokens):
+                            body_val = tokens[i][1]
+                            
+                            init_tree = compile_tcl(init_val)
+                            init_nodes = init_tree.body if init_tree.body else []
+                            
+                            cond_expr = compile_tcl_expr(test_val)[0]
+                            
+                            next_tree = compile_tcl(next_val)
+                            next_nodes = next_tree.body if next_tree.body else []
+                            
+                            body_tree = compile_tcl(body_val)
+                            loop_body = body_tree.body if body_tree.body else [ast.Pass()]
+                            loop_body.extend(next_nodes)
+                            
+                            for node in init_nodes:
+                                body.append(node)
+                            body.append(ast.While(
+                                test=cond_expr,
+                                body=loop_body,
+                                orelse=[]
+                            ))
 
         elif t_type == "WORD" and t_val == "if":
             i += 1

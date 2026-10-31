@@ -31,6 +31,28 @@ def _get_tkinter_interp():
 def py_import(mod_name: str):
     return importlib.import_module(mod_name)
 
+def tcl_info(subcommand: str, *args) -> any:
+    if subcommand == "exists":
+        if not args:
+            return 0
+        var_name = str(args[0])
+        frame = inspect.currentframe().f_back
+        env = frame.f_locals if frame else {}
+        if var_name not in env and hasattr(frame, 'f_globals'):
+            env = frame.f_globals
+            
+        # Handle array element check like count($word) or count(key)
+        arr_match = re.match(r'^([a-zA-Z_][a-zA-Z0-9_-]*)\(([a-zA-Z0-9_#-]+)\)$', var_name)
+        if arr_match:
+            arr_name, key = arr_match.groups()
+            if arr_name in env and isinstance(env[arr_name], dict):
+                return 1 if key in env[arr_name] else 0
+            return 0
+            
+        return 1 if var_name in env else 0
+    else:
+        raise ValueError(f"unknown or unsupported info subcommand \"{subcommand}\"")
+
 
 def tcl_py_lookup(base_obj, *path_parts):
     """Recursively fetch nested attributes or submodules functionally."""
@@ -56,6 +78,7 @@ def _tcl_num(val):
     except ValueError:
         return val
 
+# Number handling 
 def tcl_tuple(*args) -> tuple:
     """Convert Tcl arguments or list structures into a native Python tuple."""
     if not args:
@@ -71,6 +94,64 @@ def tcl_tuple(*args) -> tuple:
         return (val,)
     return tuple(tcl_get_list(arg) if isinstance(arg, (list, str)) else arg for arg in args)
 
+def tcl_lsort(*args):
+    flags = []
+    lst_arg = None
+    i = 0
+    while i < len(args):
+        arg = args[i]
+        if isinstance(arg, str) and arg.startswith("-"):
+            flags.append(arg)
+            if arg in ("-index", "-stride", "-command") and i + 1 < len(args):
+                flags.append(args[i+1])
+                i += 1
+        else:
+            remaining = list(args[i:])
+            lst_arg = remaining[0] if len(remaining) == 1 else remaining
+            break
+        i += 1
+        
+    items = tcl_get_list(lst_arg) if lst_arg is not None else []
+    
+    index = None
+    datatype = "ascii"
+    reverse = False
+    
+    j = 0
+    while j < len(flags):
+        f = flags[j]
+        if f == "-index":
+            index = int(flags[j+1])
+            j += 1
+        elif f == "-integer":
+            datatype = "integer"
+        elif f == "-real":
+            datatype = "real"
+        elif f == "-decreasing":
+            reverse = True
+        elif f == "-increasing":
+            reverse = False
+        j += 1
+        
+    def sort_key(item):
+        val = item
+        if index is not None:
+            sub_items = tcl_get_list(item)
+            if index < len(sub_items):
+                val = sub_items[index]
+            else:
+                val = ""
+        if datatype == "integer":
+            try: return int(val)
+            except ValueError: return 0
+        elif datatype == "real":
+            try: return float(val)
+            except ValueError: return 0.0
+        return str(val)
+        
+    sorted_items = sorted(items, key=sort_key, reverse=reverse)
+    return sorted_items
+
 def tcl_incr(var_name: str, increment: any = 1) -> int:
     frame = inspect.currentframe().f_back
     env = frame.f_locals
@@ -79,6 +160,19 @@ def tcl_incr(var_name: str, increment: any = 1) -> int:
     val = _tcl_num(env.get(var_name, 0))
     new_val = val + _tcl_num(increment)
     env[var_name] = new_val
+    return new_val
+
+def tcl_incr_array(arr_name: str, key: any, increment: any = 1) -> int:
+    frame = inspect.currentframe().f_back
+    env = frame.f_locals
+    if arr_name not in env:
+        env = frame.f_globals
+    if arr_name not in env or not isinstance(env[arr_name], dict):
+        env[arr_name] = {}
+    str_key = str(key)
+    val = _tcl_num(env[arr_name].get(str_key, 0))
+    new_val = val + _tcl_num(increment)
+    env[arr_name][str_key] = new_val
     return new_val
 
 def parse_tcl_value(val):
@@ -187,6 +281,24 @@ def tcl_dict_items(d) -> list:
         return list(d.items())
     return []
 
+def tcl_parray(arr_name: str, pattern: str = "*") -> str:
+    frame = inspect.currentframe().f_back
+    env = frame.f_locals if frame else {}
+    if arr_name not in env and hasattr(frame, 'f_globals'):
+        env = frame.f_globals
+    
+    if arr_name not in env or not isinstance(env[arr_name], dict):
+        print(f"can't find array \"{arr_name}\"")
+        return ""
+    
+    d = env[arr_name]
+    keys = sorted(d.keys())
+    for k in keys:
+        if pattern == "*" or fnmatch.fnmatch(k, pattern):
+            print(f"{arr_name}({k}) = {d[k]}")
+    return ""
+
+# I/O 
 def tcl_open(filename: str, mode: str = "r") -> str:
     global _channel_counter
     py_mode = mode
@@ -457,7 +569,8 @@ def tcl_format_output(val) -> str:
 
 def tcl_get_list(val) -> list:
     if isinstance(val, (list, tuple)):
-        return [parse_tcl_value(item) if not isinstance(item, (list, dict)) else item for item in val]
+        # Preserve sublist structure while parsing elements
+        return [parse_tcl_value(item) if not isinstance(item, (list, tuple, dict)) else tcl_get_list(item) for item in val]
     if isinstance(val, dict):
         res = []
         for k, v in val.items():
@@ -468,8 +581,9 @@ def tcl_get_list(val) -> list:
     s = str(val).strip()
     if not s:
         return []
-    return [parse_tcl_value(item) for item in s.split()]
-
+    # Clean up newline artifacts only for raw multi-line string tokens
+    cleaned = re.sub(r'[\r\n]+', ' ', s)
+    return [parse_tcl_value(item) for item in cleaned.split()]
 
 def tcl_puts(*args):
     if not args:
@@ -522,6 +636,17 @@ def tcl_gets(chan_id: str, var_name: str = None) -> int | str:
         env[var_name] = line
         return len(line)
     return line
+
+def tcl_format(fmt_str: str, *args) -> str:
+    """Emulates Tcl's format command using Python's %-formatting syntax."""
+    # Convert Tcl format specifiers like %5.2f to Python compatible equivalents if needed,
+    # then apply formatting with tuple arguments.
+    try:
+        # Python's % operator handles standard C-style format strings directly
+        return fmt_str % tuple(args)
+    except Exception as e:
+        # Fallback to string formatting
+        return fmt_str
 
 def tcl_llength(lst) -> int:
     return len(tcl_get_list(lst))
@@ -611,15 +736,18 @@ def tcl_global(*var_names):
 import textwrap
 
 def tcl_py_exec(code_str: str) -> any:
+    import builtins
     frame = inspect.currentframe().f_back
     env = frame.f_locals.copy()
     if frame and hasattr(frame, 'f_globals'):
         env.update(frame.f_globals)
     
+    # Ensure Python's built-in open is used inside py_exec blocks
+    env['open'] = builtins.open
+    
     if code_str.startswith("{") and code_str.endswith("}"):
         code_str = code_str[1:-1].strip()
         
-    # Dedent to remove leading shell continuation spaces
     code_str = textwrap.dedent(code_str)
         
     compiled = compile(code_str, "<py_exec>", "exec")
@@ -627,15 +755,18 @@ def tcl_py_exec(code_str: str) -> any:
     
     if frame and hasattr(frame, 'f_locals'):
         for k, v in env.items():
-            if not k.startswith('_'):
+            if not k.startswith('_') and k != 'open':
                 frame.f_locals[k] = v
     return ""
 
 def tcl_py_eval(code_str: str) -> any:
+    import builtins
     frame = inspect.currentframe().f_back
     env = frame.f_locals.copy()
     if frame and hasattr(frame, 'f_globals'):
         env.update(frame.f_globals)
+    
+    env['open'] = builtins.open
     
     if code_str.startswith("{") and code_str.endswith("}"):
         code_str = code_str[1:-1].strip()
@@ -659,14 +790,18 @@ def execute_tcl(source: str, env: dict) -> None:
     env.setdefault("tcl_py_lookup", tcl_py_lookup)
     env.setdefault("py_exec", tcl_py_exec)
     env.setdefault("py_eval", tcl_py_eval)
+    env.setdefault("info", tcl_info)
     env.setdefault("expr", tcl_expr)
     env.setdefault("incr", tcl_incr)
+    env.setdefault("tcl_incr_array", tcl_incr_array)
     env.setdefault("_tcl_num", _tcl_num)
     env.setdefault("tcl_tuple", tcl_tuple)
     env.setdefault("tcl_set_array", tcl_set_array)
     env.setdefault("tcl_get_array", tcl_get_array)
     env.setdefault("tcl_array", tcl_array)
     env.setdefault("tcl_dict", tcl_dict)
+    env.setdefault("parray", tcl_parray)
+    env.setdefault("lsort", tcl_lsort)
     env.setdefault("tcl_dict_set", tcl_dict_set)
     env.setdefault("tcl_dict_items", tcl_dict_items)
     env.setdefault("puts", tcl_puts)
@@ -676,6 +811,7 @@ def execute_tcl(source: str, env: dict) -> None:
     env.setdefault("close", tcl_close)
     env.setdefault("socket", tcl_socket)
     env.setdefault("flush", tcl_flush)
+    env.setdefault("format", tcl_format)
     env.setdefault("string", tcl_string)
     env.setdefault("llength", tcl_llength)
     env.setdefault("lindex", tcl_lindex)
