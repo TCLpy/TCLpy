@@ -2,6 +2,11 @@
 import sys
 import os
 
+try:
+    import readline
+except ImportError:
+    readline = None  # Fallback gracefully on Windows where readline isn't standard
+
 # Ensure current working directory is in sys.path for local module imports (e.g. windows_h.py)
 current_dir = os.getcwd()
 if current_dir not in sys.path:
@@ -17,7 +22,7 @@ except ImportError:
     except ImportError:
         # Fallback for direct local script execution
         from runtime import execute_tcl
-
+        
 def is_balanced(source: str) -> bool:
     """Check if Tcl braces {} and brackets [] are balanced to support multi-line input."""
     brace_depth = 0
