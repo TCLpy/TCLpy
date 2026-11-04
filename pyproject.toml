@@ -3,13 +3,13 @@ requires = ["setuptools>=61.0.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "tclpy"
-version = "0.1.0"
+name = "ASTpytcl"
+version = "0.1.1"
 description = "A zero-dependency, CPython-AST-powered Tcl environment with Python FFI and macro bridges"
 readme = "README.md"
 requires-python = ">=3.10"
 authors = [
-    { name = "Erider" }
+    { name = "erider0x90" }
 ]
 classifiers = [
     "Programming Language :: Python :: 3",
@@ -31,3 +31,8 @@ tclpy = "tclpy.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[project.urls]
+Homepage = "https://tclpy.github.io/TCLpy/"
+Repository = "https://github.com/TCLpy/TCLpy"
+# Bug Tracker = "https://github.com/TCLpy/TCLpy/issues"
