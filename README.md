@@ -1,5 +1,5 @@
 ﻿<p align="center">
-  <img src="assets/LogoTCLpy.jpg" alt="TCLpy Astrolabe Snake Logo" width="220" style="border-radius: 12px;">
+  <img src="https://raw.githubusercontent.com/TCLpy/TCLpy/main/assets/LogoTCLpy.jpg" alt="TCLpy Astrolabe Snake Logo" width="220" style="border-radius: 12px;">
 </p>
 
 # TCLpy 🚀
