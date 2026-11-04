@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TCLpy Tutorial & Getting Started Guide</title>
+    <style>
+        :root {
+            --bg-color: #0f172a;
+            --card-bg: #1e293b;
+            --text-main: #f8fafc;
+            --text-muted: #94a3b8;
+            --accent: #38bdf8;
+            --accent-glow: rgba(56, 189, 248, 0.2);
+            --border: #334155;
+            --code-bg: #090d16;
+        }
+        body {
+            font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            line-height: 1.6;
+            margin: 0;
+            padding: 0;
+        }
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 4rem 2rem;
+        }
+        header {
+            margin-bottom: 2rem;
+        }
+        .back-link {
+            color: var(--accent);
+            text-decoration: none;
+            font-weight: bold;
+            display: inline-block;
+            margin-bottom: 1.5rem;
+        }
+        .back-link:hover {
+            text-decoration: underline;
+        }
+        h1 {
+            font-size: 2.5rem;
+            margin-bottom: 0.5rem;
+            background: linear-gradient(to right, #38bdf8, #818cf8);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        .tagline {
+            font-size: 1.15rem;
+            color: var(--text-muted);
+            margin-bottom: 2rem;
+        }
+        .card {
+            background-color: var(--card-bg);
+            border: 1px solid var(--border);
+            border-radius: 0.5rem;
+            padding: 2rem;
+            margin-bottom: 2rem;
+        }
+        h2 {
+            font-size: 1.5rem;
+            margin-top: 0;
+            color: var(--accent);
+        }
+        h3 {
+            font-size: 1.2rem;
+            color: #f1f5f9;
+            margin-top: 1.5rem;
+        }
+        pre {
+            background-color: var(--code-bg);
+            padding: 1rem;
+            border-radius: 0.375rem;
+            overflow-x: auto;
+            border: 1px solid var(--border);
+            color: #38bdf8;
+            font-family: Consolas, Monaco, monospace;
+        }
+        ul {
+            padding-left: 1.25rem;
+        }
+        li {
+            margin-bottom: 0.5rem;
+        }
+        footer {
+            text-align: center;
+            color: var(--text-muted);
+            margin-top: 4rem;
+            font-size: 0.875rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <a href="index.html" class="back-link">&larr; Back to Home</a>
+            <h1>TCLpy Tutorial & Guide 🚀</h1>
+            <p class="tagline">Get up and running with TCLpy in your Python applications and interactive terminal shells.</p>
+        </header>
+
+        <section class="card">
+            <h2>1. Installation</h2>
+            <p>Install the package from PyPI or set it up locally for development:</p>
+            <pre><code># Standard PyPI Installation (Once published)
+pip install tclpy
+
+# Or editable local development install
+git clone https://github.com/TCLpy/TCLpy.git
+cd TCLpy
+pip install -e .</code></pre>
+        </section>
+
+        <section class="card">
+            <h2>2. Using the Interactive REPL</h2>
+            <p>Once installed, launch the interactive shell directly from your terminal (featuring full readline history navigation and multi-line brace balancing):</p>
+            <pre><code>tclpy</code></pre>
+            <p>Inside the shell, write Tcl commands naturally:</p>
+            <pre><code>tclpy> set message "Hello from TCLpy!"
+tclpy> puts $message
+Hello from TCLpy!</code></pre>
+        </section>
+
+        <section class="card">
+            <h2>3. Embedding TCLpy in Python Scripts</h2>
+            <p><code>tclpy</code> provides a clean top-level API allowing Python programs to evaluate Tcl code and share state dictionaries seamlessly.</p>
+            
+            <h3>Evaluating Tcl Strings</h3>
+            <pre><code>import tclpy
+
+env = {"x": 10, "y": 20}
+tclpy.eval('set total [expr {$x + $y}]', env)
+print("Total:", env["total"])  # Output: 30</code></pre>
+
+            <h3>Sourcing Tcl Files</h3>
+            <pre><code>import tclpy
+
+env = {}
+tclpy.source("workflow.tcl", env)
+print("Result from sourced file:", env.get("result"))</code></pre>
+        </section>
+
+        <section class="card">
+            <h2>4. Python FFI & Advanced Operations</h2>
+            <p>You can import and use any Python library directly within your Tcl code using double-colon syntax:</p>
+            <pre><code># Import math and compute square root in Tcl
+set math [py::import math]
+set root [$math sqrt 144]
+puts "Square root: $root"</code></pre>
+        </section>
+
+        <footer>
+            <p>&copy; 2026 TCLpy Open Source Project. Released under the MIT License.</p>
+        </footer>
+    </div>
+</body>
+</html>
