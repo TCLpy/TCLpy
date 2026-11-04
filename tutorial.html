@@ -142,13 +142,13 @@ tclpy.source("workflow.tcl", env)
 print("Result from sourced file:", env.get("result"))</code></pre>
         </section>
 
-        <section class="card">
-            <h2>4. Python FFI & Advanced Operations</h2>
-            <p>You can import and use any Python library directly within your Tcl code using double-colon syntax:</p>
-            <pre><code># Import math and compute square root in Tcl
-set math [py::import math]
-set root [$math sqrt 144]
-puts "Square root: $root"</code></pre>
+    <section class="card">
+                <h2>4. Python FFI & Advanced Operations</h2>
+                <p>You can import any Python module and invoke its functions directly using Tcl's double-colon namespace syntax:</p>
+                <pre><code># Import the math module and compute square root
+    py::import math
+    set root [math::sqrt 144]
+    puts "Square root: $root"</code></pre>
         </section>
 
         <footer>
