@@ -70,9 +70,11 @@
 git clone [https://github.com/TCLpy/TCLpy.git](https://github.com/TCLpy/TCLpy.git)
 cd tclpy
 pip install -e .
+tclpy
 
 ## Installation
 
 Install from PyPI:
 pip install ASTpytcl
+tclpy
 
