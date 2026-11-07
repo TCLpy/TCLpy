@@ -60,6 +60,9 @@ def run_repl():
     print("Type 'exit' or 'quit' to leave the shell.\n")
     
     env = {}
+    # Pre-seed the REPL environment with all runtime commands and bindings
+    execute_tcl("", env)
+    
     buffer = []
     
     while True:

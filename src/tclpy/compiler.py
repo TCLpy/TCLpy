@@ -375,6 +375,22 @@ def compile_tcl(source: str) -> ast.Module:
             ))
             i -= 1
         
+        elif t_type == "WORD" and t_val in ("native_tcl", "tcl_eval"):
+            cmd_name = t_val
+            i += 1
+            args = []
+            while i < len(tokens) and tokens[i][0] != "NEWLINE":
+                arg_type, arg_val = tokens[i]
+                args.append(parse_tcl_arg_node(arg_type, arg_val))
+                i += 1
+            body.append(ast.Expr(
+                value=ast.Call(
+                    func=ast.Name(id=cmd_name, ctx=ast.Load()),
+                    args=args,
+                    keywords=[]
+                )
+            ))
+            i -= 1
 
         elif t_type == "WORD" and t_val == "subst":
             i += 1

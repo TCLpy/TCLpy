@@ -54,6 +54,28 @@ def tcl_info(subcommand: str, *args) -> any:
         raise ValueError(f"unknown or unsupported info subcommand \"{subcommand}\"")
 
 
+# At the top level of src/runtime.py
+def native_tcl(code_str: any) -> str:
+    """Evaluates raw native Tcl code directly via Python's standard tkinter.Tcl() interpreter."""
+    interp = _get_tkinter_interp()
+    s = str(code_str).strip()
+    if s.startswith("{") and s.endswith("}"):
+        s = s[1:-1].strip()
+    try:
+        result = interp.eval(s)
+        return str(result) if result is not None else ""
+    except Exception as e:
+        raise RuntimeError(f"native tcl evaluation error: '{s}' -> {e}")
+
+tcl_eval = native_tcl
+
+def tclpy_banner():
+    """Prints runtime environment details and reminds users of direct interpreter availability."""
+    print("[*] tclpy CPython AST & Tkinter Tcl Hybrid Engine Active.")
+    print("[*] Tip: You can invoke native Tcl commands, built-in procedures, or use py_eval/py_exec directly.")
+    return ""
+
+
 def tcl_py_lookup(base_obj, *path_parts):
     """Recursively fetch nested attributes or submodules functionally."""
     curr = base_obj
@@ -690,6 +712,22 @@ def tcl_exec(*args):
         print(f"Error executing command: {e}")
         return ""
 
+def tcl_native_eval(code_str: any) -> str:
+    """Evaluates raw native Tcl code directly via Python's standard tkinter.Tcl() interpreter."""
+    interp = _get_tkinter_interp()
+    
+    # Unwrap Tcl braces if passed as a single braced argument block
+    s = str(code_str).strip()
+    if s.startswith("{") and s.endswith("}"):
+        s = s[1:-1].strip()
+        
+    try:
+        result = interp.eval(s)
+        return str(result) if result is not None else ""
+    except Exception as e:
+        raise RuntimeError(f"native tcl evaluation error: '{s}' -> {e}")
+
+
 def tcl_split(s, sep=" "):
     if isinstance(s, (list, tuple)):
         s = " ".join(str(x) for x in s)
@@ -780,6 +818,20 @@ def tcl_py_call(obj, method_name: str, *args):
     # Convert any Tcl list/tuple arguments if necessary, or pass directly
     return method(*args)
 
+def py_to_tcl(var_name: str, val: any):
+    interp = _get_tkinter_interp()
+    if isinstance(val, dict):
+        for k, v in val.items():
+            interp.set(f"{var_name}({k})", str(v))
+    elif isinstance(val, (list, tuple)):
+        interp.eval(f"set {var_name} {{{' '.join(str(x) for x in val)}}}")
+    else:
+        interp.setvar(var_name, str(val))
+
+def tcl_to_py(var_name: str) -> str:
+    interp = _get_tkinter_interp()
+    return interp.getvar(var_name)
+
 
 def execute_tcl(source: str, env: dict) -> None:
     if source.startswith('\ufeff'):
@@ -791,6 +843,9 @@ def execute_tcl(source: str, env: dict) -> None:
     env.setdefault("py_exec", tcl_py_exec)
     env.setdefault("py_eval", tcl_py_eval)
     env.setdefault("info", tcl_info)
+    env.setdefault("tclpy_banner", tclpy_banner)
+    env.setdefault("native_tcl", native_tcl)
+    env.setdefault("tcl_eval", tcl_eval)
     env.setdefault("expr", tcl_expr)
     env.setdefault("incr", tcl_incr)
     env.setdefault("tcl_incr_array", tcl_incr_array)
@@ -826,6 +881,10 @@ def execute_tcl(source: str, env: dict) -> None:
     env.setdefault("tcl_get_list", tcl_get_list)
     env.setdefault("tcl_format_output", tcl_format_output)
     env.setdefault("tcl_getattr", tcl_getattr)
+    env.setdefault("py_to_tcl", py_to_tcl)
+    env.setdefault("tcl_to_py", tcl_to_py)
+    
+
     
     tree = compile_tcl(source)
     if tree.body and isinstance(tree.body[-1], ast.Expr):
