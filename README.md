@@ -103,4 +103,4 @@ py_exec {
     for k, v in word_count.items():
         py_to_tcl(f"word_count({k})", v)
 }
-Check out examples/spellChecker.tcl in the repository for the full implementation.
+Check out examples/network/spellChecker.tcl in the repository for the full implementation.
