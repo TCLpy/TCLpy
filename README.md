@@ -78,3 +78,29 @@ Install from PyPI:
 pip install ASTpytcl
 tclpy
 
+## Hybrid Tcl/Python Cohabitation
+
+`tclpy` bridges Python and Tcl under a shared runtime environment using `tkinter.Tcl()`. This allows high-performance data ingestion, networking, and tokenization in Python to live seamlessly alongside clean, expressive Tcl control logic and array lookups within the same script file.
+
+### Example: Hybrid Spelling Correction Engine
+
+Python securely fetches and tokenizes a large corpus (e.g., Norvig's big corpus) into a native dictionary, which is then synced into a Tcl array (`word_count`) using `py_to_tcl`. Tcl handles the recursive edit-distance lookups natively.
+
+```tcl
+py_exec {
+    import urllib.request
+    import re
+    from collections import Counter
+
+    # Fetch and tokenize corpus via Python
+    req = urllib.request.Request("[https://www.norvig.com/big.txt](https://www.norvig.com/big.txt)", headers={'User-Agent': 'Mozilla/5.0'})
+    with urllib.request.urlopen(req) as resp:
+        tokens = re.findall(r'[a-z]+', resp.read().decode('utf-8').lower())
+    
+    word_count = dict(Counter(tokens))
+
+    # Sync into Tcl array structure
+    for k, v in word_count.items():
+        py_to_tcl(f"word_count({k})", v)
+}
+Check out examples/spellChecker.tcl in the repository for the full implementation.
