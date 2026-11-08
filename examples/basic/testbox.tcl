@@ -1,32 +1,40 @@
-py::import pygame
-pygame.init
+# ==========================================================
+# TCLPY EXAMPLE: Pygame Integration Test (testbox.tcl)
+# ==========================================================
 
-# Set up a 300x300 window
-set screen [pygame.display.set_mode [tcl_tuple 300 300]]
-pygame.display.set_caption "tclpy Rect Test"
+py_import pygame
+py_exec "pygame.init()"
 
-# Define a color (Red) and our rectangle coordinates
-set RED [tcl_tuple 255 0 0]
-set rect_coords [tcl_tuple 50 50 120 80]
-set my_rect [pygame.Rect *$rect_coords]
+# Set up a 300x300 window and keep a reference to screen
+py_exec {
+screen = pygame.display.set_mode((300, 300))
+pygame.display.set_caption('tclpy Rect Test')
+is_running = True
+}
 
 # Fill screen with black, draw our rect, and update the display
-screen.fill [tcl_tuple 0 0 0]
-pygame.draw.rect $screen $RED $my_rect
-pygame.display.flip
+py_exec {
+screen.fill((0, 0, 0))
+pygame.draw.rect(screen, (255, 0, 0), pygame.Rect(50, 50, 120, 80))
+pygame.display.flip()
+}
 
 puts "Window rendered! Entering event loop (close window or press Ctrl+C to exit)..."
 
-# Clean event loop to prevent window freezing on close
+# Clean event loop polling from Tcl
 set running 1
 while {$running} {
-    foreach event [pygame.event.get] {
-        if {$event.type == $pygame.QUIT} {
-            set running 0
-        }
-    }
-    pygame.time.wait 30
+    # Pump OS window events and check for QUIT
+    py_exec {
+pygame.event.pump()
+for event in pygame.event.get():
+    if event.type == pygame.QUIT:
+        is_running = False
+}
+    # Synchronize the Python flag back into Tcl
+    set running [py_eval "1 if is_running else 0"]
+    after 30
 }
 
-pygame.quit
+py_exec {pygame.quit()}
 puts "Pygame closed cleanly."

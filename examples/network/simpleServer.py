@@ -16,10 +16,14 @@ proc accept_connection {channel client_host client_port} {
     puts "DISCONNECTED: Connection with $client_host:$client_port closed cleanly."
 }
 
-# 2. Bind and listen on an available port (e.g., 9000) using a background thread
+# 2. Bind and listen on port 9000
 set server_socket [socket -server accept_connection 9000]
 puts "STATUS: TCLpy server listening loop active on port 9000..."
+
+# 3. Enter the Tcl event loop so background socket events are processed
+vwait forever
 """
+
 
 # Initialize the critical execution environment frame
 env = {}

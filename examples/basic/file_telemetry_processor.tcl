@@ -7,7 +7,7 @@ puts "      TCLPY FILE I/O & STRING MATCH TELEMETRY DEMO        "
 puts "=========================================================="
 
 # Open external sensor log file from disk
-set fh [open "examples/sensors.log" r]
+set fh [open "sensors.log" r]
 set file_data [read $fh]
 close $fh
 
