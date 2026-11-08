@@ -101,23 +101,23 @@
             <p class="tagline">Get up and running with TCLpy in your Python applications and interactive terminal shells.</p>
         </header>
 
-<section class="card">
-    <h2>1. Installation</h2>
-    <p>Install the package from PyPI or set it up locally for development:</p>
-    <pre><code># Standard PyPI Installation
+        <section class="card">
+            <h2>1. Installation</h2>
+            <p>Install the package from PyPI or set it up locally for development:</p>
+            <pre><code># Standard PyPI Installation
 pip install ASTpytcl
 
 # Or editable local development install
 git clone https://github.com/TCLpy/TCLpy.git
 cd TCLpy
 pip install -e .</code></pre>
-</section>
+        </section>
 
         <section class="card">
             <h2>2. Using the Interactive REPL</h2>
-            <p>Once installed, launch the interactive shell directly from your terminal (featuring full readline history navigation and multi-line brace balancing):</p>
-            <pre><code>tclpy</code></pre>
-            <p>Inside the shell, write Tcl commands naturally:</p>
+            <p>Once installed, launch the interactive shell directly from your terminal using the module runner:</p>
+            <pre><code>python -m tclpy.cli</code></pre>
+            <p>Inside the shell, write native Tcl commands naturally:</p>
             <pre><code>tclpy> set message "Hello from TCLpy!"
 tclpy> puts $message
 Hello from TCLpy!</code></pre>
@@ -142,13 +142,16 @@ tclpy.source("workflow.tcl", env)
 print("Result from sourced file:", env.get("result"))</code></pre>
         </section>
 
-    <section class="card">
-                <h2>4. Python FFI & Advanced Operations</h2>
-                <p>You can import any Python module and invoke its functions directly using Tcl's double-colon namespace syntax:</p>
-                <pre><code># Import the math module and compute square root
-    py::import math
-    set root [math::sqrt 144]
-    puts "Square root: $root"</code></pre>
+        <section class="card">
+            <h2>4. Python FFI & Bridge Commands</h2>
+            <p>You can import Python modules and execute code blocks directly inside Tcl using the built-in bridge commands <code>py_import</code> and <code>py_exec</code>:</p>
+            <pre><code># Import the math module and execute Python snippets
+py_import math
+py_exec {
+    import math
+    val = math.sqrt(144)
+    print(f"Square root via Python: {val}")
+}</code></pre>
         </section>
 
         <footer>

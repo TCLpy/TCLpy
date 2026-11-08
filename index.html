@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>TCLpy — Lightweight Tcl-to-Python Compiler & FFI Bridge</title>
+    <title>TCLpy — Native Tcl 8.6 & Python Bridge Engine</title>
     <style>
         :root {
             --bg-color: #0f172a;
@@ -123,7 +123,7 @@
         <header>
             <img src="assets/LogoTCLpy.jpg" alt="TCLpy Logo">
             <h1>TCLpy 🚀</h1>
-            <p class="tagline">A Lightweight, Zero-Dependency Tcl-to-Python Compiler & FFI Bridge</p>
+            <p class="tagline">A Lightweight, Zero-Dependency Native Tcl 8.6 & Python Bridge</p>
             <div class="btn-group">
                 <a href="tutorial.html" class="btn">📖 View Tutorial</a>
                 <a href="https://github.com/TCLpy/TCLpy" class="btn btn-secondary">GitHub Repository</a>
@@ -133,12 +133,12 @@
 
         <section class="card">
             <h2>Overview</h2>
-            <p><code>tclpy</code> is a high-performance, open-source Tcl-to-Python bridge and execution engine. Instead of running a string-based interpreter, it compiles Tcl source code directly into native CPython AST nodes, delivering seamless Python interoperability while preserving Tcl's core command semantics.</p>
+            <p><code>tclpy</code> is a high-performance, open-source Tcl-to-Python bridge and execution engine powered by Python's native <code>tkinter.Tcl()</code> interpreter (Tcl 8.6.15). By leveraging the robust C-extension core of Tcl 8.6 directly, it provides full-spec Tcl execution alongside seamless Python interoperability via clean bridge commands like <code>py_exec</code>, <code>py_eval</code>, and <code>py_import</code>.</p>
         </section>
 
         <section class="card">
             <h2>Installation</h2>
-            <p>Install the package directly from PyPI once released:</p>
+            <p>Install the package directly from PyPI:</p>
             <pre><code>pip install ASTpytcl</code></pre>
             <p style="margin-top: 1rem;">Or install locally in editable mode for development:</p>
             <pre><code>git clone https://github.com/TCLpy/TCLpy.git
@@ -165,11 +165,11 @@ tclpy.source("script.tcl", env)</code></pre>
         <section class="card">
             <h2>Key Features</h2>
             <ul>
-                <li><strong>AST-Based Compilation:</strong> Compiles Tcl control flow directly into CPython AST nodes for native execution speed.</li>
+                <li><strong>Native Tcl 8.6.15 Engine:</strong> Built on Python's robust <code>tkinter.Tcl</code> interpreter for complete Tcl language standards compliance.</li>
                 <li><strong>Python Embedding API:</strong> Seamlessly integrate Tcl logic into Python apps using <code>tclpy.eval()</code> and <code>tclpy.source()</code>.</li>
-                <li><strong>Direct Python Interop:</strong> Import any Python module via <code>py::import</code> using Tcl double-colon notation.</li>
-                <li><strong>TCP Sockets & I/O:</strong> Full support for client/server sockets, file channels, and stream flushing.</li>
-                <li><strong>Zero-Dependency:</strong> Minimalist architecture designed for high performance across Windows, Termux, and Pydroid 3.</li>
+                <li><strong>Direct Python Interop:</strong> Import modules and run inline code via <code>py_import</code> and <code>py_exec</code> with automated indentation handling.</li>
+                <li><strong>Interactive REPL Shell:</strong> Features built-in readline history navigation and brace/bracket balancing for multi-line block entry.</li>
+                <li><strong>Zero-Dependency & Cross-Platform:</strong> Designed for high performance across Windows, Termux, and Pydroid 3.</li>
             </ul>
         </section>
 

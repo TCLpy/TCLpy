@@ -1,27 +1,22 @@
-# src/cli.py
 import sys
 import os
 
 try:
     import readline
 except ImportError:
-    readline = None  # Fallback gracefully on Windows where readline isn't standard
+    readline = None
 
-# Ensure current working directory is in sys.path for local module imports (e.g. windows_h.py)
 current_dir = os.getcwd()
 if current_dir not in sys.path:
     sys.path.insert(0, current_dir)
 
 try:
-    # When running as part of the installed tclpy package or PyInstaller bundle
-    from tclpy.runtime import execute_tcl
+    from tclpy.runtime import execute_tcl, tclpy_banner
 except ImportError:
     try:
-        # Relative import fallback if running inside package context
-        from .runtime import execute_tcl
+        from .runtime import execute_tcl, tclpy_banner
     except ImportError:
-        # Fallback for direct local script execution
-        from runtime import execute_tcl
+        from runtime import execute_tcl, tclpy_banner
         
 def is_balanced(source: str) -> bool:
     """Check if Tcl braces {} and brackets [] are balanced to support multi-line input."""
@@ -55,14 +50,11 @@ def is_balanced(source: str) -> bool:
     return brace_depth <= 0 and bracket_depth <= 0
 
 def run_repl():
-    """Run an interactive Tcl REPL shell with persistent environment and multi-line support."""
-    print("tclpy Interactive Shell (Powered by CPython AST & Tkinter Tcl)")
+    tclpy_banner()
     print("Type 'exit' or 'quit' to leave the shell.\n")
     
     env = {}
-    # Pre-seed the REPL environment with all runtime commands and bindings
     execute_tcl("", env)
-    
     buffer = []
     
     while True:
@@ -98,7 +90,6 @@ def main():
             print(f"Error: script '{script_path}' not found.", file=sys.stderr)
             sys.exit(1)
             
-        # Add the script's own directory to sys.path so local modules (e.g. testdump) resolve
         script_dir = os.path.abspath(os.path.dirname(script_path))
         if script_dir not in sys.path:
             sys.path.insert(0, script_dir)
