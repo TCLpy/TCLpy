@@ -146,12 +146,15 @@ print("Result from sourced file:", env.get("result"))</code></pre>
             <h2>4. Python FFI & Bridge Commands</h2>
             <p>You can import Python modules and execute code blocks directly inside Tcl using the built-in bridge commands <code>py_import</code> and <code>py_exec</code>:</p>
             <pre><code># Import the math module and execute Python snippets
-py_import math
+# Good: Mutate state in py_exec
 py_exec {
     import math
-    val = math.sqrt(144)
-    print(f"Square root via Python: {val}")
-}</code></pre>
+    radius = 12.5
+    area = math.pi * (radius ** 2)
+}
+
+# Good: Evaluate single expression in py_eval
+set computed_area [py_eval {area}]</code></pre>
         </section>
 
         <footer>
