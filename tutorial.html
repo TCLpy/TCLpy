@@ -144,9 +144,8 @@ print("Result from sourced file:", env.get("result"))</code></pre>
 
         <section class="card">
             <h2>4. Python FFI & Bridge Commands</h2>
-            <p>You can import Python modules and execute code blocks directly inside Tcl using the built-in bridge commands <code>py_import</code> and <code>py_exec</code>:</p>
-            <pre><code># Import the math module and execute Python snippets
-# Good: Mutate state in py_exec
+            <p>You can import Python modules and execute code blocks directly inside Tcl using the built-in bridge commands <code>py_exec</code> and <code>py_eval</code>:</p>
+            <pre><code># Good: Mutate state in py_exec
 py_exec {
     import math
     radius = 12.5
@@ -155,6 +154,39 @@ py_exec {
 
 # Good: Evaluate single expression in py_eval
 set computed_area [py_eval {area}]</code></pre>
+        </section>
+
+        <section class="card">
+            <h2>5. Core `tclpy` v0.2.0 Idioms & Best Practices</h2>
+            <p>To write robust code and completely avoid quote escaping, delimiter collisions, and interpolation errors under v0.2.0, adhere to these core design patterns:</p>
+
+            <h3>Scope Division: <code>py_exec</code> vs <code>py_eval</code></h3>
+            <ul>
+                <li><strong><code>py_exec {...}</code></strong>: Use for multi-line logic, imports, loop structures, and state mutations/assignments.</li>
+                <li><strong><code>py_eval {...}</code></strong>: Reserve strictly for returning a single Python expression or variable value back to Tcl.</li>
+            </ul>
+
+            <h3>Python-Resident State (Zero-Quote Interpolation)</h3>
+            <p>Avoid interpolating dynamic values using Tcl strings (which easily break on unescaped quotes or nested delimiters). Instead, push incoming data directly into Python variables and let Python handle the data structures natively in shared memory:</p>
+            <pre><code># Idiomatic Pattern (Python holds state):
+py_exec {
+    import json
+    raw_payload = '{"status": "ok", "count": 42}'
+    parsed = json.loads(raw_payload)
+}
+set status [py_eval {parsed["status"]}]</code></pre>
+
+            <h3>Strict Brace Isolation <code>{...}</code></h3>
+            <p>Always wrap Python code blocks inside Tcl curly braces `{}`. This ensures the Tcl tokenizer passes the string literally without attempting to interpret Python brackets <code>[]</code>, quotes <code>""</code>, or dollar signs <code>$</code>.</p>
+
+            <h3>Micro-Bridge Functions for Complex Workflows</h3>
+            <p>Define helper capability functions inside <code>py_exec</code> during initialization, then invoke them cleanly from Tcl loops via `py_eval`:</p>
+            <pre><code>py_exec {
+    def process_telemetry(device_id, value):
+        return f"DEV_{device_id}:{value * 1.05:.2f}"
+}
+
+set formatted [py_eval {process_telemetry(101, 44.2)}]</code></pre>
         </section>
 
         <footer>
