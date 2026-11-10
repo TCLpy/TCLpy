@@ -1,0 +1,120 @@
+### Step 1: Start Capture
+
+Click the **Start Capture** button in the app. You should see `[SYSTEM] Packet capture started.` pop up in the console.
+
+### Step 2: Test the Interactive Tcl Console First
+
+Before messing with files, use the bottom input entry in the GUI to run direct Tcl commands and see how the bridge feels. Type these one by one and hit Enter:
+
+* Check the packet count or view the last captured packet:
+```tcl
+packet
+
+```
+
+
+* Check specific fields from the latest packet:
+```tcl
+packet protocol
+
+```
+
+
+* Manually fire a test alert through the Tcl bridge:
+```tcl
+alert "Manual test alert from console" HIGH
+
+```
+
+
+
+### Step 3: Trigger a Real-World Rule Hot-Reload
+
+1. Open your `rules.tcl` file in your text editor.
+2. Add a brand new rule at the bottom targeting web traffic (HTTP/HTTPS ports 80 or 443, or whatever traffic is active on your machine right now):
+```tcl
+rule web_traffic_monitor {
+    if {[packet dst_port] == 80 || [packet dst_port] == 443} {
+        log "Web traffic detected to [packet dst]"
+    }
+}
+
+```
+
+3. Save `rules.tcl`.
+4. Look at your Tk console—it will instantly print `[SYSTEM] Hot-reloaded 'rules.tcl' successfully.` without you ever touching Python or restarting the GUI.
+5. Watch the logs stream live web activity!
+
+Here is a structured test plan to validate every layer of your Scriptable Packet Analysis Platform (`tclpy_analyzer.py` + `rules.tcl`) from end to end.
+
+---
+
+### **Test Plan: TCLpy Packet Analysis Platform**
+
+#### **Phase 1: Environment & Startup Verification**
+
+* **Test 1.1: Clean Boot**
+* **Action:** Run `python tclpy_analyzer.py`.
+* **Expected Result:** The Tkinter GUI opens successfully, showing the top bar, packet tree view with columns (`Time`, `Source`, `Src Port`, `Destination`, `Dst Port`, `Protocol`, `Length`), and the dark-themed console with prompt. No traceback errors in the terminal.
+
+
+* **Test 1.2: Capture State Toggle**
+* **Action:** Click the **Start Capture** button.
+* **Expected Result:** Button text changes to **Stop Capture**, and `[SYSTEM] Packet capture started.` appears in the console.
+
+
+
+
+
+#### **Phase 2: Interactive Tcl Console Evaluation**
+
+* **Test 2.1: Basic State Queries**
+* **Action:** Type `packet` into the console entry and hit Enter.
+* **Expected Result:** Returns the string representation of the latest captured packet dictionary (or empty state fallback).
+
+
+* **Test 2.2: Field Extraction**
+* **Action:** Type `packet protocol` or `packet dst_port` into the console.
+* **Expected Result:** Outputs the exact value corresponding to the latest packet field.
+
+
+* **Test 2.3: Manual Alert Dispatch**
+* **Action:** Type `alert "Test security warning" HIGH` into the console.
+* **Expected Result:** Displays a formatted `[HIGH ALERT] Test security warning` entry in the console with custom alert styling/tagging.
+
+
+
+#### **Phase 3: Hot-Reloading Signatures**
+
+* **Test 3.1: Dynamic Rule Mutation**
+* **Action:** Open `rules.tcl`, modify an existing rule or add a new test rule (e.g., logging a specific destination or port), and save the file.
+
+
+* **Expected Result:** The console instantly outputs `[SYSTEM] Hot-reloaded 'rules.tcl' successfully.` without restarting the Python process or resetting the packet history.
+
+
+
+
+* **Test 3.2: Rule Execution Loop**
+* **Action:** Generate traffic or let background network noise pass while a rule is active.
+* **Expected Result:** The background `on_packet` hook evaluates incoming packets against the newly loaded Tcl logic, firing logs or alerts dynamically.
+
+
+
+
+
+#### **Phase 4: Behavioral & Protocol Rules**
+
+* **Test 4.1: Port-Based Signatures**
+* **Action:** Ensure rules targeting SSH (`22`) or Telnet (`23`) are active in `rules.tcl`.
+
+
+* **Expected Result:** Traffic hitting those ports triggers the respective severity logs or alerts (e.g., `[LOW ALERT]` or `[HIGH ALERT]`).
+
+
+
+
+* **Test 4.2: Payload & DNS Inspection**
+* **Action:** Trigger DNS queries or test payload checks (e.g., matching keywords like `"admin"` or checking query length).
+
+
