@@ -66,6 +66,22 @@ def set_breakpoint(address):
                 return True
     return False
 
+def show_registers(context, pi):
+    output = (
+        f"[*] Dumping registers for thread ID: 0x{pi.dwThreadId:08X}\n"
+        f"[**] RIP: 0x{context.Rip:016X}\n"
+        f"[**] RSP: 0x{context.Rsp:016X}\n"
+        f"[**] RBP: 0x{context.Rbp:016X}\n"
+        f"[**] RAX: 0x{context.Rax:016X}\n"
+        f"[**] RBX: 0x{context.Rbx:016X}\n"
+        f"[**] RCX: 0x{(context.RCX if hasattr(context, 'RCX') else context.Rcx):016X}\n"
+        f"[**] RDX: 0x{context.Rdx:016X}\n"
+        f"[**] RDI: 0x{context.Rdi:016X}\n"
+        f"[**] RSI: 0x{context.Rsi:016X}"
+    )
+    log_to_console(output, tag="info")
+
+
 def get_register_dict(ctx):
     if not ctx:
         return {}
@@ -194,22 +210,54 @@ def init_tclpy_interpreter(interp):
             return f"Error listing processes: {err}"
 
     def tcl_help(*args):
-        help_text = (
-            "Available Tcl Debugger Commands:\n"
-            "-----------------------------------\n"
-            "  ps                   - List running processes and PIDs\n"
-            "  attach [PID]         - Attach to a target process ID\n"
-            "  bp [address]         - Set a software breakpoint (INT3)\n"
-            "  reg [name]           - Query registers (e.g. reg RIP, reg RAX)\n"
-            "  log [msg]            - Log a message to the console\n"
-            "  alert [msg] [sev]    - Trigger a severity alert (LOW/MEDIUM/HIGH)\n"
-            "  help                 - Display this help menu"
-        )
-        log_to_console(help_text, tag="sys")
-        return ""
-
+            help_text = (
+                "Available Tcl Debugger Commands:\n"
+                "-----------------------------------\n"
+                "  ps                   - List running processes and PIDs\n"
+                "  attach [PID]         - Attach to a target process ID\n"
+                "  bp [address]         - Set a software breakpoint (INT3)\n"
+                "  reg [name]           - Query registers (e.g. reg RIP, reg RAX)\n"
+                "  show_regs            - Dump all core registers to console output\n"
+                "  log [msg]            - Log a message to the console\n"
+                "  alert [msg] [sev]    - Trigger a severity alert (LOW/MEDIUM/HIGH)\n"
+                "  help                 - Display this help menu"
+            )
+            log_to_console(help_text, tag="sys")
+            return ""
+    
     interp.createcommand("help", tcl_help)
 
+    def tcl_show_regs(*args):
+            global current_context, current_process_info
+            
+            ctx_to_use = current_context
+            pi_to_use = current_process_info
+            
+            # Fallback: if no debug event context captured yet, grab the first active thread context
+            if not ctx_to_use and current_process_info.dwProcessId != 0:
+                try:
+                    for thread in psutil.Process(current_process_info.dwProcessId).threads():
+                        hThd = kernel32.OpenThread(THREAD_ALL_ACCESS, False, thread.id)
+                        if hThd:
+                            temp_ctx = CONTEXT64()
+                            temp_ctx.ContextFlags = CONTEXT_FULL
+                            if kernel32.GetThreadContext(hThd, byref(temp_ctx)):
+                                ctx_to_use = temp_ctx
+                                pi_to_use = PROCESS_INFORMATION()
+                                pi_to_use.dwProcessId = current_process_info.dwProcessId
+                                pi_to_use.dwThreadId = thread.id
+                                kernel32.CloseHandle(hThd)
+                                break
+                            kernel32.CloseHandle(hThd)
+                except Exception:
+                    pass
+
+            if ctx_to_use:
+                show_registers(ctx_to_use, pi_to_use)
+                return "1"
+            return "Error: No active thread context captured or process not attached"
+
+    interp.createcommand("show_regs", tcl_show_regs)
     interp.createcommand("ps", tcl_ps)
     interp.createcommand("attach", tcl_attach)
     interp.createcommand("bp", tcl_bp)
