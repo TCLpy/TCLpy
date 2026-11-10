@@ -50,7 +50,7 @@ The platform uses a host-service symmetry:
 Install the required Python packages:
 
 ```bash
-pip install scapy tclpy
+pip install ASTpytcl
 ```
 
 *Note: Administrative/root privileges may be required to enable promiscuous mode for raw packet capture.*
