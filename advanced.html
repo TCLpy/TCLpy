@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>TCLpy Advanced Features: Native DLL & Package Loading</title>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #1e1e1e; color: #d4d4d4; margin: 0; padding: 40px; line-height: 1.6; }
+        .container { max-width: 800px; margin: auto; background: #252526; padding: 30px; border-radius: 8px; box-shadow: 0 4px 15px rgba(0,0,0,0.5); }
+        h1, h2 { color: #4ec9b0; }
+        code, pre { background: #1e1e1e; color: #ce9178; padding: 2px 6px; border-radius: 4px; font-family: 'Consolas', monospace; }
+        pre { padding: 15px; overflow-x: auto; border-left: 4px solid #007acc; }
+        a { color: #569cd6; text-decoration: none; }
+        a:hover { text-decoration: underline; }
+        .back-link { margin-bottom: 20px; display: inline-block; }
+    </style>
+</head>
+<body>
+<div class="container">
+    <a href="tutorial.html" class="back-link">&larr; Back to Tutorial</a>
+    <h1>Advanced TCLpy: Loading Binary Extensions & DLLs</h1>
+    <p>Because `tclpy` embeds a fully functional C-based Tcl runtime beneath Python, you aren't restricted to pure Tcl scripts. Any compiled Tcl package distributed as a DLL (such as <code>tk.dll</code>, <code>tls.dll</code> for secure sockets, or custom extensions) can be dynamically loaded directly into your interpreter environment.</p>
+
+    <h2>1. Dynamic DLL Loading via Tcl</h2>
+    <p>Tcl exposes the native <code>load</code> command to link compiled shared libraries at runtime. For example, to load the Transport Layer Security (TLS) package DLL:</p>
+    <pre><code># Load external Tcl C-extension DLL
+load "C:/path/to/tls/libtls170.dll" Tls
+
+# Verify package initialization
+package require tls
+puts "TLS package successfully loaded!"
+    </code></pre>
+
+    <h2>2. Bridging Binary Packages with Python State</h2>
+    <p>Once a binary package is loaded into the Tcl interpreter, its custom commands become immediately available to your Tcl automation scripts and hot-reloadable rules files, while Python maintains the process lifecycle, memory space, and UI thread safety.</p>
+
+    <h2>3. Example: Custom Extension Pipeline</h2>
+    <pre><code>proc secure_fetch {url} {
+    # Utilizing loaded TLS extension commands inside a Tcl rule
+    set handle [tls::init -autoservername true]
+    log "Initialized secure channel for $url"
+}
+    </code></pre>
+</div>
+</body>
+</html>

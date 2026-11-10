@@ -3,6 +3,7 @@ import tkinter
 import importlib
 import sys
 import os
+import textwrap
 
 _tkinter_interp = None
 _env = {}
@@ -12,6 +13,7 @@ def _get_tkinter_interp():
     if _tkinter_interp is None:
         _tkinter_interp = tkinter.Tcl()
         _register_python_bridges(_tkinter_interp)
+        _register_cli_procedures(_tkinter_interp)
     return _tkinter_interp
 
 def _register_python_bridges(interp):
@@ -19,7 +21,25 @@ def _register_python_bridges(interp):
     interp.createcommand("py_eval", _cmd_py_eval)
     interp.createcommand("py_import", _cmd_py_import)
 
-import textwrap
+def _register_cli_procedures(interp):
+    # Native Tcl procedures mirroring standard tclsh terminal utilities
+    interp.eval("""
+        proc ls {{path "."}} {
+            set items [glob -nocomplain -directory $path *]
+            set result {}
+            foreach item $items {
+                lappend result [file tail $item]
+            }
+            return [join $result "\n"]
+        }
+        
+        proc cat {filename} {
+            set fh [open $filename r]
+            set data [read $fh]
+            close $fh
+            return $data
+        }
+    """)
 
 def _cmd_py_exec(*args):
     code = " ".join(args)
