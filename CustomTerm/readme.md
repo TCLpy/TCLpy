@@ -24,18 +24,20 @@ A modern, interactive developer workstation shell combining **Tcl's lightweight 
 tclpy_test/
 ├── tclpySh.py          # Main hybrid shell harness & REPL loop
 ├── README.md           # Terminal documentation
-└── tests/              # Sandbox & test scripts
+
 
 ```
 
 ---
 
 ## 🛠️ Requirements
-
+* **editable install of term, toml file provided**
 * **Python 3.10+**
 * **Dependencies:**
 ```bash
 pip install ASTpytcl prompt_toolkit rich
+pip install -e .
+tclpy-sh
 
 ```
 

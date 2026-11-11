@@ -1,0 +1,16 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "tclpy-sh"
+version = "1.0.0"
+description = "Hybrid Tcl/Python developer workstation shell"
+dependencies = [
+    "tclpy",
+    "prompt_toolkit",
+    "rich"
+]
+
+[project.scripts]
+tclpy-sh = "tclpy_sh:main"
