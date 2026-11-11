@@ -21,10 +21,11 @@ A modern, interactive developer workstation shell combining **Tcl's lightweight 
 ## 📂 File Structure
 
 ```text
-tclpy_test/
+CustomTerm/
 ├── tclpySh.py          # Main hybrid shell harness & REPL loop
 ├── README.md           # Terminal documentation
-
+loop
+├── pyproject.toml      # editable install 
 
 ```
 
