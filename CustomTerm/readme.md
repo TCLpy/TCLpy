@@ -24,7 +24,6 @@ A modern, interactive developer workstation shell combining **Tcl's lightweight 
 CustomTerm/
 ├── tclpySh.py          # Main hybrid shell harness & REPL loop
 ├── README.md           # Terminal documentation
-loop
 ├── pyproject.toml      # editable install 
 
 ```
@@ -41,7 +40,6 @@ pip install -e .
 tclpy-sh
 
 ```
-
 
 
 ---
