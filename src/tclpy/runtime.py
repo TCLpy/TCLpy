@@ -6,6 +6,7 @@ import os
 import textwrap
 
 _tkinter_interp = None
+_lua_runtime = None
 _env = {}
 
 def _get_tkinter_interp():
@@ -13,13 +14,34 @@ def _get_tkinter_interp():
     if _tkinter_interp is None:
         _tkinter_interp = tkinter.Tcl()
         _register_python_bridges(_tkinter_interp)
+        _register_lua_bridges(_tkinter_interp)
         _register_cli_procedures(_tkinter_interp)
     return _tkinter_interp
+
+def _get_lua_runtime():
+    global _lua_runtime
+    if _lua_runtime is None:
+        try:
+            import lupa.luajit21 as lupa
+        except ImportError:
+            import lupa
+        _lua_runtime = lupa.LuaRuntime(unpack_returned_tuples=True)
+        # Ensure current working directory is searchable for require() and ffi.load()
+        _lua_runtime.execute("""
+            package.path  = "./?.lua;./?/init.lua;" .. package.path
+            package.cpath = "./?.dll;" .. package.cpath
+        """)
+    return _lua_runtime
 
 def _register_python_bridges(interp):
     interp.createcommand("py_exec", _cmd_py_exec)
     interp.createcommand("py_eval", _cmd_py_eval)
     interp.createcommand("py_import", _cmd_py_import)
+
+def _register_lua_bridges(interp):
+    interp.createcommand("lua_exec", _cmd_lua_exec)
+    interp.createcommand("lua_eval", _cmd_lua_eval)
+    interp.createcommand("lua_file", _cmd_lua_file)
 
 def _register_cli_procedures(interp):
     # Native Tcl procedures mirroring standard tclsh terminal utilities
@@ -65,6 +87,37 @@ def _cmd_py_import(*args):
     _env[mod_name] = mod
     return ""
 
+def _cmd_lua_exec(*args):
+    code = textwrap.dedent(" ".join(args))
+    try:
+        lua = _get_lua_runtime()
+        res = lua.execute(code)
+        return str(res) if res is not None else ""
+    except Exception as e:
+        raise RuntimeError(f"lua_exec error: {e}")
+
+def _cmd_lua_eval(*args):
+    expr = textwrap.dedent(" ".join(args))
+    try:
+        lua = _get_lua_runtime()
+        res = lua.eval(expr)
+        return str(res) if res is not None else ""
+    except Exception as e:
+        raise RuntimeError(f"lua_eval error: {e}")
+
+def _cmd_lua_file(*args):
+    if not args:
+        raise RuntimeError("lua_file requires a file path")
+    filepath = args[0]
+    try:
+        with open(filepath, "r", encoding="utf-8") as f:
+            code = f.read()
+        lua = _get_lua_runtime()
+        res = lua.execute(code)
+        return str(res) if res is not None else ""
+    except Exception as e:
+        raise RuntimeError(f"lua_file error: {e}")
+
 def execute_tcl(source: str, env: dict = None) -> str:
     if source.startswith('\ufeff'):
         source = source[1:]
@@ -90,5 +143,6 @@ def execute_tcl(source: str, env: dict = None) -> str:
 
 def tclpy_banner():
     print("[*] tclpy Native Tcl 8.6.15 Engine Active (Powered by Tkinter).")
-    print("[*] Tip: You can invoke native Tcl commands and use py_exec/py_eval directly.")
+    print("[*] Tip: You can invoke native Tcl commands and use py_exec/py_eval or lua_exec/lua_eval directly.")
     return ""
+    

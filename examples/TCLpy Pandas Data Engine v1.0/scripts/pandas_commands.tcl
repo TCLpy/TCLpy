@@ -29,15 +29,15 @@ proc df_analyst {cmd args} {
          # Usage: authors [n]
          py_df_authors {*}$args
 		}
-		author_search {
+		search {
             # Usage: author_search <username>
             py_df_author_search {*}$args
         }
-		author_stats {
+		a_stats {
             # Usage: author_stats <username>
             py_df_author_stats {*}$args
         }
-		top_authors {
+		top {
             # Usage: top_authors [n] (default 10)
             py_df_top_authors {*}$args
         }
@@ -49,8 +49,8 @@ proc df_analyst {cmd args} {
         help {
             puts "\n=== TCLpy Pandas Command Reference ==="
             puts "  query <expr>      - Pandas vector query (e.g. 'likes > 5')"
-            puts "  sort <col> [asc|desc] - Sort DataFrame by column"
-            puts "  head [n]          - View top n rows"
+            puts "  sort <col> \[asc|desc\] - Sort DataFrame by column"
+            puts "  head \[n\]          - View top n rows"
             puts "  nlargest <n> <col> - Show top n rows by column"
             puts "  stats             - Display summary statistics"
             puts "=======================================\n"

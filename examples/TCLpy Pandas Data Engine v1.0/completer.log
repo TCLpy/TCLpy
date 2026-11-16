@@ -1,0 +1,141 @@
+DEBUG:asyncio:Using proactor: IocpProactor
+DEBUG:root:text_before_cursor: 'set a 10\nset b 3\n\n# Basic arithmetic\nset sum [expr {$a + $b}]\nset product [expr {$a * $b}]\n\nputs "Sum: $sum, Product: $product"\n# Output: Sum: 13, Product: 30\n'
+DEBUG:asyncio:Using proactor: IocpProactor
+DEBUG:root:text_before_cursor: 'proc addNumbers {x y} {\n    return [expr {$x + $y}]\n}\n\nset result [addNumbers 15 25]\nputs "The sum is $result"\n# Output: The sum is 40\n'
+DEBUG:asyncio:Using proactor: IocpProactor
+DEBUG:root:text_before_cursor: 'set score 85\n\nif {$score >= 90} {\n    puts "Grade: A"\n} elseif {$score >= 75} {\n    puts "Grade: B"\n} else {\n    puts "Grade: C"\n}\n\n# For loop\nfor {set i 0} {$i < 3} {incr i} {\n    puts "Iteration $i"\n}\n\n# Foreach loop over a list\nforeach item {apple banana cherry} {\n    puts "Fruit: $item"\n}\n'
+DEBUG:asyncio:Using proactor: IocpProactor
+DEBUG:root:text_before_cursor: '# Create a list\nset colors [list red green blue]\nputs "Second color: [lindex $colors 1]"\n# Output: Second color: green\n\n# Write to and read from a file\nset fp [open "test.txt" w]\nputs $fp "Writing a line to Tcl file handling."\nclose $fp\n\nset fp [open "test.txt" r]\nset line [gets $fp]\nclose $fp\nputs "Read from file: $line"\n'
+DEBUG:asyncio:Using proactor: IocpProactor
+DEBUG:root:text_before_cursor: 'c'
+DEBUG:root:text_before_cursor: 'co'
+DEBUG:root:text_before_cursor: 'cod'
+DEBUG:root:text_before_cursor: 'code'
+DEBUG:root:text_before_cursor: 'code '
+DEBUG:root:text_before_cursor: 'code t'
+DEBUG:root:text_before_cursor: 'code tl'
+DEBUG:root:text_before_cursor: 'code tle'
+DEBUG:root:text_before_cursor: 'code l'
+DEBUG:root:text_before_cursor: 'code le'
+DEBUG:root:text_before_cursor: 'code ler'
+DEBUG:root:text_before_cursor: 'code lera'
+DEBUG:root:text_before_cursor: 'code lerar'
+DEBUG:root:text_before_cursor: 'code lea'
+DEBUG:root:text_before_cursor: 'code lear'
+DEBUG:root:text_before_cursor: 'code learn'
+DEBUG:root:text_before_cursor: 'code learnt'
+DEBUG:root:text_before_cursor: 'code learntc'
+DEBUG:root:text_before_cursor: 'code learntcl'
+DEBUG:root:text_before_cursor: 'code learntcl.'
+DEBUG:root:text_before_cursor: 'code learntcl.t'
+DEBUG:root:text_before_cursor: 'code learntcl.tc'
+DEBUG:root:text_before_cursor: 'code learntcl.tcl'
+DEBUG:asyncio:Using proactor: IocpProactor
+DEBUG:root:text_before_cursor: 't'
+DEBUG:root:text_before_cursor: 's'
+DEBUG:root:text_before_cursor: 'so'
+DEBUG:root:text_before_cursor: 'sou'
+DEBUG:root:text_before_cursor: 'sour'
+DEBUG:root:text_before_cursor: 'source '
+DEBUG:asyncio:Using proactor: IocpProactor
+DEBUG:root:text_before_cursor: 'c'
+DEBUG:root:text_before_cursor: 'cl'
+DEBUG:root:text_before_cursor: 'cls'
+DEBUG:asyncio:Using proactor: IocpProactor
+DEBUG:root:text_before_cursor: 'c'
+DEBUG:root:text_before_cursor: 'cl'
+DEBUG:root:text_before_cursor: 'cls'
+DEBUG:root:text_before_cursor: 'cls '
+DEBUG:asyncio:Using proactor: IocpProactor
+DEBUG:root:text_before_cursor: 'C'
+DEBUG:root:text_before_cursor: 'CS'
+DEBUG:root:text_before_cursor: 'l'
+DEBUG:root:text_before_cursor: 'ls'
+DEBUG:root:text_before_cursor: 'ls '
+DEBUG:asyncio:Using proactor: IocpProactor
+DEBUG:root:text_before_cursor: 'd'
+DEBUG:root:text_before_cursor: 'di'
+DEBUG:root:text_before_cursor: 'dir'
+DEBUG:root:text_before_cursor: 'dir '
+DEBUG:asyncio:Using proactor: IocpProactor
+DEBUG:root:text_before_cursor: 'r'
+DEBUG:root:text_before_cursor: 'rm'
+DEBUG:root:text_before_cursor: 'rm '
+DEBUG:root:text_before_cursor: 'rm t'
+DEBUG:root:text_before_cursor: 'rm te'
+DEBUG:root:text_before_cursor: 'rm tes'
+DEBUG:asyncio:Using proactor: IocpProactor
+DEBUG:root:text_before_cursor: 'd'
+DEBUG:root:text_before_cursor: 'de'
+DEBUG:root:text_before_cursor: 'del'
+DEBUG:root:text_before_cursor: 'del '
+DEBUG:root:text_before_cursor: 'del t'
+DEBUG:root:text_before_cursor: 'del te'
+DEBUG:root:text_before_cursor: 'del tes'
+DEBUG:asyncio:Using proactor: IocpProactor
+DEBUG:root:text_before_cursor: 'l'
+DEBUG:root:text_before_cursor: 'ls'
+DEBUG:root:text_before_cursor: 'ls '
+DEBUG:asyncio:Using proactor: IocpProactor
+DEBUG:root:text_before_cursor: 'd'
+DEBUG:root:text_before_cursor: 'de'
+DEBUG:root:text_before_cursor: 'del'
+DEBUG:root:text_before_cursor: 'del '
+DEBUG:root:text_before_cursor: 'del l'
+DEBUG:asyncio:Using proactor: IocpProactor
+DEBUG:root:text_before_cursor: '# Iterate through a list of IP addresses and ping each one\nforeach ip {\n    192.168.1.1\n    192.168.1.2\n    10.0.0.1\n} {\n    puts "Checking reachability to $ip ..."\n    ping $ip\n}\n'
+DEBUG:asyncio:Using proactor: IocpProactor
+DEBUG:root:text_before_cursor: 'Get-NetIPAddress -AddressFamily IPv4 | Select-Object IPAddress, InterfaceAlias\n'
+DEBUG:asyncio:Using proactor: IocpProactor
+DEBUG:root:text_before_cursor: 'powershell -Command "Get-NetIPAddress -AddressFamily IPv4 | Select-Object IPAddress, InterfaceAlias"'
+DEBUG:asyncio:Using proactor: IocpProactor
+DEBUG:root:text_before_cursor: '# Iterate through a list of IP addresses and ping each one\nforeach ip {\n    192.168.0.1\n    192.168.0.2\n\t192.168.0.3\n\t192.168.0.4\n\t192.168.0.5\n\t192.168.0.6\n\t192.168.0.7\n\t192.168.0.8\n\t192.168.0.9\n} {\n    puts "Checking reachability to $ip ..."\n    ping $ip\n}\n'
+DEBUG:asyncio:Using proactor: IocpProactor
+DEBUG:root:text_before_cursor: 'l'
+DEBUG:root:text_before_cursor: 'ls'
+DEBUG:root:text_before_cursor: 'ls '
+DEBUG:asyncio:Using proactor: IocpProactor
+DEBUG:root:text_before_cursor: 'e'
+DEBUG:root:text_before_cursor: 'ex'
+DEBUG:root:text_before_cursor: 'exi'
+DEBUG:root:text_before_cursor: 'exit'
+DEBUG:root:text_before_cursor: 'exit '
+DEBUG:asyncio:Using proactor: IocpProactor
+DEBUG:root:text_before_cursor: 'l'
+DEBUG:root:text_before_cursor: 'ls'
+DEBUG:root:text_before_cursor: 'ls '
+DEBUG:asyncio:Using proactor: IocpProactor
+DEBUG:root:text_before_cursor: 'p'
+DEBUG:root:text_before_cursor: 'py'
+DEBUG:root:text_before_cursor: 'pyt'
+DEBUG:root:text_before_cursor: 'pyth'
+DEBUG:root:text_before_cursor: 'pytho'
+DEBUG:root:text_before_cursor: 'python'
+DEBUG:root:text_before_cursor: 'python '
+DEBUG:root:text_before_cursor: 'python c'
+DEBUG:root:text_before_cursor: 'python co'
+DEBUG:root:text_before_cursor: 'python com'
+DEBUG:root:text_before_cursor: 'python comm'
+DEBUG:asyncio:Using proactor: IocpProactor
+DEBUG:root:text_before_cursor: 'set ps_cmd {Get-Process | Select-Object -First 3 Name, Id | ConvertTo-Json}\n'
+DEBUG:asyncio:Using proactor: IocpProactor
+DEBUG:root:text_before_cursor: 'set output [exec powershell.exe -NoProfile -Command $ps_cmd]\n'
+DEBUG:asyncio:Using proactor: IocpProactor
+DEBUG:root:text_before_cursor: 'puts $output\n'
+DEBUG:asyncio:Using proactor: IocpProactor
+DEBUG:root:text_before_cursor: 'package require twapi\n'
+DEBUG:asyncio:Using proactor: IocpProactor
+DEBUG:root:text_before_cursor: 'n'
+DEBUG:root:text_before_cursor: 'np'
+DEBUG:asyncio:Using proactor: IocpProactor
+DEBUG:asyncio:Using proactor: IocpProactor
+DEBUG:asyncio:Using proactor: IocpProactor
+DEBUG:root:text_before_cursor: 'g'
+DEBUG:root:text_before_cursor: 'gc'
+DEBUG:root:text_before_cursor: 'gcc'
+DEBUG:asyncio:Using proactor: IocpProactor
+DEBUG:root:text_before_cursor: 'e'
+DEBUG:root:text_before_cursor: 'ex'
+DEBUG:root:text_before_cursor: 'exi'
+DEBUG:root:text_before_cursor: 'exit'
+DEBUG:root:text_before_cursor: 'exit '
